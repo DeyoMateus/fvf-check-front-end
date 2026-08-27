@@ -1,22 +1,31 @@
 import { Badge } from "../ui/Badge";
-import type { Severidade } from "../../lib/types";
+import type { Severity } from "../../lib/types";
+import { SEVERITY_LABELS } from "../../lib/types";
 
-const MAP: Record<Severidade, { label: string; variant: "muted" | "info" | "warning" | "danger" }> = {
-  BAIXA: { label: "Baixa", variant: "muted" },
-  MEDIA: { label: "Média", variant: "info" },
-  ALTA: { label: "Alta", variant: "warning" },
-  CRITICA: { label: "Crítica", variant: "danger" },
+interface SeverityBadgeProps {
+  value?: Severity;
+}
+
+const MAP: Record<Severity, { variant: "muted" | "info" | "warning" | "danger" }> = {
+  LOW: { variant: "muted" },
+  MEDIUM: { variant: "info" },
+  HIGH: { variant: "warning" },
+  CRITICAL: { variant: "danger" },
 };
 
-export function SeverityBadge({ value }: { value: Severidade }) {
-  const cfg = MAP[value];
+export function SeverityBadge({ value }: SeverityBadgeProps) {
+  // Fallback seguro caso 'value' venha indefinido ou com valor inesperado
+  const severityKey = value && MAP[value] ? value : "MEDIUM";
+  const cfg = MAP[severityKey];
+  const label = SEVERITY_LABELS[severityKey] ?? "Média";
+
   return (
     <Badge variant={cfg.variant}>
       <span
         className="h-1.5 w-1.5 rounded-full bg-current pulse-dot"
         aria-hidden
       />
-      {cfg.label}
+      {label}
     </Badge>
   );
 }

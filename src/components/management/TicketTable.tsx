@@ -4,7 +4,7 @@ import { TriageScoreMeter } from "../domain/TriageScoreMeter";
 import { ResponsibilityBadge } from "../domain/ResponsibilityBadge";
 import { SeverityBadge } from "../domain/SeverityBadge";
 import { SlaIndicator } from "../domain/SlaIndicator";
-import { STATUS_LABELS, type StatusTicket, type Ticket } from "../../lib/types";
+import { STATUS_LABELS, type Ticket, type Severity } from "../../lib/types";
 import { cn } from "../../utils/cn";
 
 interface TicketTableProps {
@@ -22,21 +22,29 @@ export function TicketTable({ tickets, onTicketClick }: TicketTableProps) {
     const arr = [...tickets];
     arr.sort((a, b) => {
       const mult = dir === "asc" ? 1 : -1;
+      const clientA = a.customerName || "";
+      const clientB = b.customerName || "";
+      const slaA = a.slaHours ?? 24;
+      const slaB = b.slaHours ?? 24;
+
+      const scoreA = a.scores
+        ? Math.max(a.scores.transporte, a.scores.fabrica, a.scores.montagem)
+        : 0;
+      const scoreB = b.scores
+        ? Math.max(b.scores.transporte, b.scores.fabrica, b.scores.montagem)
+        : 0;
+
       switch (sortKey) {
         case "id":
-          return a.id.localeCompare(b.id) * mult;
+          return (a.code || a.id).localeCompare(b.code || b.id) * mult;
         case "cliente":
-          return a.cliente.localeCompare(b.cliente) * mult;
+          return clientA.localeCompare(clientB) * mult;
         case "sla":
-          return (a.slaHoras - b.slaHoras) * mult;
+          return (slaA - slaB) * mult;
         case "score":
-          return (
-            (Math.max(a.scores.transporte, a.scores.fabrica, a.scores.montagem) -
-              Math.max(b.scores.transporte, b.scores.fabrica, b.scores.montagem)) *
-            mult
-          );
+          return (scoreA - scoreB) * mult;
         case "severidade":
-          return (sevOrder(a.severidade) - sevOrder(b.severidade)) * mult;
+          return (sevOrder(a.severity) - sevOrder(b.severity)) * mult;
       }
     });
     return arr;
@@ -78,53 +86,61 @@ export function TicketTable({ tickets, onTicketClick }: TicketTableProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-steel-700/40">
-            {sorted.map((t) => (
-              <tr
-                key={t.id}
-                onClick={() => onTicketClick?.(t)}
-                className="cursor-pointer text-steel-200 transition-colors hover:bg-abyss-800/40"
-              >
-                <td className="px-4 py-3">
-                  <span className="font-mono text-xs font-bold text-gold-400">{t.id}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="max-w-[260px]">
-                    <p className="truncate font-semibold text-steel-50">{t.cliente}</p>
-                    <p className="text-[11px] text-steel-400">{t.cidade}</p>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-[11px] text-steel-300">
-                  {STATUS_LABELS[t.status as StatusTicket]}
-                </td>
-                <td className="px-4 py-3">
-                  <ResponsibilityBadge value={t.responsabilidade} />
-                </td>
-                <td className="px-4 py-3">
-                  <TriageScoreMeter scores={t.scores} size="sm" showLegend={false} />
-                </td>
-                <td className="px-4 py-3">
-                  <SeverityBadge value={t.severidade} />
-                </td>
-                <td className="px-4 py-3">
-                  <SlaIndicator hours={t.slaHoras} />
-                </td>
-                <td className="px-4 py-3 font-mono text-[11px] text-steel-300">
-                  <div>{t.danfe}</div>
-                  <div className="text-steel-500">{t.lote}</div>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTicketClick?.(t);
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md border border-gold-500/30 bg-gold-500/5 px-2 py-1 text-[11px] font-semibold text-gold-300 hover:bg-gold-500/15"
-                  >
-                    Abrir <ExternalLink className="h-3 w-3" />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {sorted.map((t) => {
+              const displayCode = t.code || t.id;
+              const displayCustomer = t.customerName || "Cliente não informado";
+              const displayCity = t.cityName || "Não especificada";
+              const displayNfe = t.nfeKey ? `NF-e ${t.nfeKey.slice(0, 8)}...` : "Sem NF-e";
+              const displayBatch = t.batchNumber ? `Lote ${t.batchNumber}` : "Sem lote";
+
+              return (
+                <tr
+                  key={t.id}
+                  onClick={() => onTicketClick?.(t)}
+                  className="cursor-pointer text-steel-200 transition-colors hover:bg-abyss-800/40"
+                >
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-xs font-bold text-gold-400">{displayCode}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="max-w-[260px]">
+                      <p className="truncate font-semibold text-steel-50">{displayCustomer}</p>
+                      <p className="text-[11px] text-steel-400">{displayCity}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-[11px] text-steel-300">
+                    {STATUS_LABELS[t.status] ?? t.status}
+                  </td>
+                  <td className="px-4 py-3">
+                    <ResponsibilityBadge value={t.suggestedResponsibility ?? "TRANSPORT_DAMAGE"} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <TriageScoreMeter scores={t.scores} size="sm" showLegend={false} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <SeverityBadge value={t.severity ?? "MEDIUM"} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <SlaIndicator hours={t.slaHours ?? 24} />
+                  </td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-steel-300">
+                    <div>{displayNfe}</div>
+                    <div className="text-steel-500">{displayBatch}</div>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTicketClick?.(t);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-gold-500/30 bg-gold-500/5 px-2 py-1 text-[11px] font-semibold text-gold-300 hover:bg-gold-500/15"
+                    >
+                      Abrir <ExternalLink className="h-3 w-3" />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -132,8 +148,9 @@ export function TicketTable({ tickets, onTicketClick }: TicketTableProps) {
   );
 }
 
-function sevOrder(s: Ticket["severidade"]) {
-  return { BAIXA: 0, MEDIA: 1, ALTA: 2, CRITICA: 3 }[s];
+function sevOrder(s?: Severity) {
+  if (!s) return 1;
+  return { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 }[s];
 }
 
 function Th({

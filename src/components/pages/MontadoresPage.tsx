@@ -36,19 +36,47 @@ export function MontadoresPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterStatus>("TODOS");
 
-  // 🔄 Busca os dados do backend na montagem do componente
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        const data = await montadoresService.getAll();
-        setMontadores(data);
-      } finally {
-        setLoading(false);
-      }
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+
+  async function loadData() {
+    try {
+      setLoading(true);
+      const data = await montadoresService.getAll();
+      setMontadores(data);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
     loadData();
   }, []);
+
+  async function handleCreateAssembler(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      setSubmitting(true);
+      await montadoresService.create({
+        name: newName,
+        email: newEmail,
+        password: newPassword,
+      });
+      setIsModalOpen(false);
+      setNewName("");
+      setNewEmail("");
+      setNewPassword("");
+      loadData();
+    } catch (error) {
+      console.error("Erro ao cadastrar montador:", error);
+      alert("Erro ao cadastrar montador. Verifique os dados.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   const filtered = useMemo(() => {
     return montadores.filter((m) => {
@@ -94,7 +122,7 @@ export function MontadoresPage() {
         }
         description="Acompanhe a lista de profissionais de montagem ativos na sua operação."
         actions={
-          <Button>
+          <Button onClick={() => setIsModalOpen(true)}>
             <Plus className="h-4 w-4" />
             Novo montador
           </Button>
@@ -216,6 +244,66 @@ export function MontadoresPage() {
               </div>
             </article>
           ))}
+        </div>
+      )}
+
+      {/* MODAL DE CADASTRO DE NOVO MONTADOR */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-steel-700 bg-abyss-900 p-6 shadow-2xl space-y-4">
+            <h3 className="font-bold text-steel-50 text-base">Cadastrar Novo Montador</h3>
+            
+            <form onSubmit={handleCreateAssembler} className="space-y-3">
+              <div>
+                <label className="text-xs text-steel-400 block mb-1">Nome Completo</label>
+                <input
+                  type="text"
+                  required
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full rounded-lg border border-steel-700 bg-abyss-950 px-3 py-2 text-sm text-steel-100 focus:border-gold-500 outline-none"
+                  placeholder="Ex: João da Silva"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-steel-400 block mb-1">E-mail de Acesso</label>
+                <input
+                  type="email"
+                  required
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="w-full rounded-lg border border-steel-700 bg-abyss-950 px-3 py-2 text-sm text-steel-100 focus:border-gold-500 outline-none"
+                  placeholder="joao@email.com"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-steel-400 block mb-1">Senha de Acesso</label>
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full rounded-lg border border-steel-700 bg-abyss-950 px-3 py-2 text-sm text-steel-100 focus:border-gold-500 outline-none"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3">
+                <Button 
+                  type="button" 
+                  variant="secondary" 
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar Montador"}
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
   Factory,
-  Mail,
   MapPin,
   Package,
   Plus,
   ShieldAlert,
   Star,
+  TrendingUp,
+  Activity,
+  Layers,
 } from "lucide-react";
 import { type Fabrica, fabricasService } from "../../services/fabricas.service";
 import { PageHeader } from "../ui/PageHeader";
@@ -47,7 +49,7 @@ export function FabricasPage() {
           setSelected(data[0]);
         }
       } catch (err) {
-        console.error("Erro ao carregar fábricas:", err);
+        console.error("Erro ao carregar empresas:", err);
       } finally {
         setLoading(false);
       }
@@ -81,7 +83,7 @@ export function FabricasPage() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center text-steel-400">
-        Carregando fábrica(s)...
+        Carregando dados do banco de dados...
       </div>
     );
   }
@@ -92,21 +94,21 @@ export function FabricasPage() {
         kicker="FVF CHECK • Fornecedores"
         title={
           <>
-            <span className="text-gold-gradient">Fábricas</span> parceiras
+            <span className="text-gold-gradient">Fábricas</span> e Lojistas
           </>
         }
-        description="Cadastro de indústrias, score de qualidade, RMA abertos e SLA médio de reposição de peças."
+        description="Gestão de parceiros, score de qualidade, volume operacional e indicadores de SLA."
         actions={
           <Button>
             <Plus className="h-4 w-4" />
-            Nova fábrica
+            Nova empresa
           </Button>
         }
       />
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat
-          label="Fábricas ativas"
+          label="Empresas ativas"
           value={ativas}
           hint={`${fabricas.length} cadastradas`}
           icon={<Factory className="h-5 w-5" />}
@@ -138,7 +140,7 @@ export function FabricasPage() {
         <SearchInput
           value={query}
           onChange={setQuery}
-          placeholder="Buscar fábrica, CNPJ, cidade ou especialidade…"
+          placeholder="Buscar empresa, CNPJ, cidade ou tipo…"
           className="min-w-[240px] flex-1 max-w-md"
         />
         <Tabs<FilterStatus>
@@ -163,8 +165,8 @@ export function FabricasPage() {
 
       {filtered.length === 0 ? (
         <EmptyState
-          title="Nenhuma fábrica encontrada"
-          description="Ajuste os filtros ou cadastre um novo fornecedor industrial."
+          title="Nenhuma empresa encontrada"
+          description="Ajuste os filtros ou cadastre um novo parceiro."
           icon={<Factory className="h-7 w-7" />}
         />
       ) : (
@@ -202,8 +204,8 @@ export function FabricasPage() {
                       </div>
                     </div>
                   </div>
-                  <Badge variant={STATUS_BADGE[f.status].variant}>
-                    {STATUS_BADGE[f.status].label}
+                  <Badge variant={STATUS_BADGE[f.status]?.variant || "success"}>
+                    {STATUS_BADGE[f.status]?.label || f.status}
                   </Badge>
                 </div>
 
@@ -221,64 +223,82 @@ export function FabricasPage() {
             ))}
           </div>
 
-          {/* Detalhe */}
+          {/* FICHA LATERAL COM KPI'S CHAVE DE NEGÓCIO */}
           <aside className="xl:col-span-2">
             {selected ? (
-              <div className="sticky top-4 rounded-xl border border-steel-700/60 bg-gradient-to-b from-abyss-800/80 to-abyss-900/90 p-5">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-400">
-                  Ficha do fornecedor
-                </p>
-                <h3 className="mt-2 text-lg font-bold text-steel-50">
-                  {selected.nome}
-                </h3>
-                <p className="text-xs text-steel-400">{selected.especialidade}</p>
+              <div className="sticky top-4 rounded-xl border border-steel-700/60 bg-gradient-to-b from-abyss-800/80 to-abyss-900/90 p-5 space-y-5">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-400">
+                      Painel Analítico do Parceiro
+                    </p>
+                    <Badge variant={STATUS_BADGE[selected.status]?.variant || "success"}>
+                      {selected.status}
+                    </Badge>
+                  </div>
+                  <h3 className="mt-2 text-lg font-bold text-steel-50">
+                    {selected.nome}
+                  </h3>
+                  <p className="text-xs text-steel-400">{selected.especialidade}</p>
+                </div>
 
-                <div className="mt-4 space-y-3 text-sm">
+                <div className="space-y-3 text-sm border-t border-b border-steel-800/80 py-4">
                   <DetailRow label="CNPJ" value={selected.cnpj} mono />
                   <DetailRow
-                    label="Local"
+                    label="Localização"
                     value={`${selected.cidade} / ${selected.uf}`}
                   />
-                  <DetailRow label="Contato" value={selected.contato} />
-                  <DetailRow
-                    label="Lotes ativos"
-                    value={String(selected.lotesAtivos)}
-                  />
-                  <DetailRow
-                    label="SLA médio reposição"
-                    value={`${selected.slaMedioHoras}h`}
-                  />
+                  <DetailRow label="E-mail de Contato" value={selected.contato} />
                 </div>
 
-                <div className="mt-5">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-steel-400">
-                    Score de qualidade
+                {/* Bloco de Indicadores de Negócio (KPIs) */}
+                <div className="space-y-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-steel-400 flex items-center gap-1.5">
+                    <TrendingUp className="h-3.5 w-3.5 text-gold-400" />
+                    Métricas de Desempenho
                   </p>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-abyss-950">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-gold-600 to-gold-400"
-                      style={{ width: `${selected.scoreQualidade}%` }}
-                    />
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-steel-800 bg-abyss-950/60 p-3">
+                      <div className="flex items-center gap-1.5 text-steel-400 text-[11px] mb-1">
+                        <Layers className="h-3.5 w-3.5 text-gold-400" />
+                        Lotes Ativos
+                      </div>
+                      <p className="font-mono text-base font-bold text-steel-50">
+                        {selected.lotesAtivos}
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg border border-steel-800 bg-abyss-950/60 p-3">
+                      <div className="flex items-center gap-1.5 text-steel-400 text-[11px] mb-1">
+                        <Activity className="h-3.5 w-3.5 text-gold-400" />
+                        SLA de Resposta
+                      </div>
+                      <p className="font-mono text-base font-bold text-steel-50">
+                        {selected.slaMedioHoras}h
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 font-mono text-sm font-bold text-gold-300">
-                    {selected.scoreQualidade}/100
-                  </p>
-                </div>
 
-                <div className="mt-5 flex flex-col gap-2">
-                  <Button className="w-full">
-                    <Mail className="h-4 w-4" />
-                    Abrir RMA
-                  </Button>
-                  <Button variant="secondary" className="w-full">
-                    Ver lotes vinculados
-                  </Button>
+                  {/* Barra de Score de Qualidade */}
+                  <div className="rounded-lg border border-steel-800 bg-abyss-950/60 p-3.5 space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-steel-400 font-medium">Score de Qualidade Geral</span>
+                      <span className="font-mono font-bold text-gold-300">{selected.scoreQualidade}/100</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-abyss-950">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-gold-600 to-gold-400 transition-all duration-500"
+                        style={{ width: `${selected.scoreQualidade}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
               <EmptyState
-                title="Selecione uma fábrica"
-                description="Clique em um card para ver a ficha completa."
+                title="Selecione uma empresa"
+                description="Clique em um card para ver os indicadores detalhados."
               />
             )}
           </aside>
@@ -324,12 +344,12 @@ function DetailRow({
   mono?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-steel-700/30 pb-2">
+    <div className="flex items-center justify-between gap-3">
       <span className="text-[11px] font-semibold uppercase tracking-wider text-steel-500">
         {label}
       </span>
       <span
-        className={cn("text-right text-steel-100", mono && "font-mono text-xs")}
+        className={cn("text-right text-steel-100 text-xs", mono && "font-mono")}
       >
         {value}
       </span>

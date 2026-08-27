@@ -1,59 +1,155 @@
-// Domínio FVF Check — nomenclatura real do setor moveleiro
-// (MDF, fita de borda, lote, NF-e, Danfe, etc.)
+/* ============================================================
+   1. ENUMS & TIPOS PRINCIPAIS (Alinhados 100% com o Prisma)
+   ============================================================ */
 
-export type Responsabilidade = "TRANSPORTE" | "FABRICA" | "MONTAGEM";
+export type ResponsibilityLabel =
+  | "TRANSPORT_DAMAGE"
+  | "FACTORY_DEFECT"
+  | "ASSEMBLY_ERROR";
 
-export type StatusTicket =
-  | "ABERTO" // acabou de chegar
-  | "TRIAGEM" // analista avaliando
-  | "EM_ANALISE" // aguardando fornecedor/fábrica
-  | "RESOLVIDO" // solucionado
-  | "CANCELADO";
+export type TicketStatus =
+  | "OPEN"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "REJECTED"
+  | "COMPLETED"
+  | "CANCELLED";
 
-export type Severidade = "BAIXA" | "MEDIA" | "ALTA" | "CRITICA";
+export type Severity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
-export interface PecaAveriada {
+export type PkgCondition = "INTACT" | "DAMAGED";
+
+// Ajuste em DefectType (Alinhado 100% com o Prisma)
+export type DefectType = "BROKEN" | "MISSING" | "HARDWARE_FAULT";
+
+export type MediaType =
+  | "AMBIENT"
+  | "DEFECT"
+  | "MANUAL_PAGE"
+  | "LABEL"
+  | "DISCARD_PROOF";
+
+/* ============================================================
+   2. DTOs (Data Transfer Objects)
+   ============================================================ */
+
+export interface TicketInvoiceDTO {
+  number: string;
+  nfeKey: string;
+  customerName: string;
+  customerPhone?: string;
+  productName: string;
+  batchNumber?: string;
+}
+
+export interface TicketPartInputDTO {
+  partCode: string;
+  description: string;
+  quantity: number;
+  damageType:
+    | "PECA_QUEBRADA"
+    | "FALTOU_PECA"
+    | "FERRAGEM_DEFEITUOSA"
+    | "EMBALAGEM_AVARIADA";
+}
+
+export interface CreateTicketDTO {
+  isEmergencyMode: boolean;
+  invoice: TicketInvoiceDTO;
+  packageCondition: PkgCondition;
+  suggestedResponsibility: ResponsibilityLabel;
+  description: string;
+  parts: TicketPartInputDTO[];
+}
+
+/* ============================================================
+   3. ESTRUTURA DE DADOS & INTERFACES (Entidades do Domínio)
+   ============================================================ */
+
+export interface Media {
   id: string;
-  descricao: string; // ex: "Lateral direita 600x2200mm"
-  material: string; // ex: "MDF Ultra 15mm - Carvalho Hanover"
-  evidencia: number; // qtd de fotos
-  score: number; // 0-100 (probabilidade de defeito real)
+  ticketId: string;
+  ticketPartId?: string | null;
+  url: string;
+  type: MediaType;
+  latitude?: number | null;
+  longitude?: number | null;
+  capturedAt: string;
+  createdAt: string;
+}
+
+export interface TicketPart {
+  id: string;
+  ticketId: string;
+  partCode: string;
+  quantity: number;
+  defectType: DefectType;
+  emergencyNotes?: string;
+  createdAt: string;
+  media?: Media[];
 }
 
 export interface Ticket {
-  id: string; // FVF-2025-0142
-  cliente: string;
-  cidade: string;
-  danfe: string; // NF-e referência
-  lote: string; // lote da fábrica
-  status: StatusTicket;
-  responsabilidade: Responsabilidade;
-  severidade: Severidade;
-  // Triage scores — soma 100%
-  scores: { transporte: number; fabrica: number; montagem: number };
-  pecas: PecaAveriada[];
-  abertoEm: string; // ISO
-  slaHoras: number; // horas restantes
-  responsavel?: string;
+  id: string;
+  code?: string;
+  tenantId?: string;
+  invoiceId?: string;
+  productId?: string;
+  createdById?: string;
+  description?: string;
+
+  status: TicketStatus;
+  suggestedResponsibility?: ResponsibilityLabel;
+  severity?: Severity;
+
+  // Relações e metadados retornados pelo Backend
+  customerName?: string;
+  cityName?: string;
+  nfeKey?: string;
+  batchNumber?: string;
+
+  scores?: {
+    transporte: number;
+    fabrica: number;
+    montagem: number;
+  };
+  parts?: TicketPart[];
+
+  createdAt?: string;
+  updatedAt?: string;
+  slaHours?: number;
+  assignedUser?: string;
 }
 
-export const RESP_LABELS: Record<Responsabilidade, string> = {
-  TRANSPORTE: "Avaria no Transporte",
-  FABRICA: "Defeito de Fábrica",
-  MONTAGEM: "Erro de Montagem",
+/* ============================================================
+   4. DICIONÁRIOS DE EXIBIÇÃO (UI LABELS)
+   ============================================================ */
+
+export const RESPONSIBILITY_LABELS: Record<ResponsibilityLabel, string> = {
+  TRANSPORT_DAMAGE: "Avaria no Transporte",
+  FACTORY_DEFECT: "Defeito de Fábrica",
+  ASSEMBLY_ERROR: "Erro de Montagem",
 };
 
-export const STATUS_LABELS: Record<StatusTicket, string> = {
-  ABERTO: "Aberto",
-  TRIAGEM: "Em Triagem",
-  EM_ANALISE: "Em Análise",
-  RESOLVIDO: "Resolvido",
-  CANCELADO: "Cancelado",
+export const STATUS_LABELS: Record<TicketStatus, string> = {
+  OPEN: "Aberto",
+  UNDER_REVIEW: "Em Análise",
+  APPROVED: "Aprovado",
+  REJECTED: "Rejeitado",
+  COMPLETED: "Resolvido",
+  CANCELLED: "Cancelado",
 };
 
-export const STATUS_ORDER: StatusTicket[] = [
-  "ABERTO",
-  "TRIAGEM",
-  "EM_ANALISE",
-  "RESOLVIDO",
+export const SEVERITY_LABELS: Record<Severity, string> = {
+  LOW: "Baixa",
+  MEDIUM: "Média",
+  HIGH: "Alta",
+  CRITICAL: "Crítica",
+};
+
+export const STATUS_ORDER: TicketStatus[] = [
+  "OPEN",
+  "UNDER_REVIEW",
+  "APPROVED",
+  "COMPLETED",
 ];

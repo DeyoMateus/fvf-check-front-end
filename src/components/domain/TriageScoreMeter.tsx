@@ -1,9 +1,9 @@
 import { cn } from "../../utils/cn";
 import type { Ticket } from "../../lib/types";
-import { RESP_LABELS } from "../../lib/types";
+import { RESPONSIBILITY_LABELS } from "../../lib/types";
 
 interface TriageScoreMeterProps {
-  scores: Ticket["scores"];
+  scores?: Ticket["scores"];
   size?: "sm" | "md";
   showLegend?: boolean;
   className?: string;
@@ -12,22 +12,40 @@ interface TriageScoreMeterProps {
 /**
  * Visualização radial (donut) dos 3 scores de responsabilidade.
  * - Transporte: dourado (âmbar)
- * - Fábrica: vermelho (uso em escala, não primário)
+ * - Fábrica: vermelho
  * - Montagem: azul claro
  */
 export function TriageScoreMeter({
-  scores,
+  scores = { transporte: 33, fabrica: 33, montagem: 34 },
   size = "md",
   showLegend = true,
   className,
 }: TriageScoreMeterProps) {
+  const currentScores = scores ?? { transporte: 0, fabrica: 0, montagem: 0 };
+
   const radius = size === "sm" ? 26 : 38;
   const stroke = size === "sm" ? 6 : 8;
   const c = 2 * Math.PI * radius;
+
   const segs = [
-    { key: "transporte", value: scores.transporte, color: "#f59e0b", label: RESP_LABELS.TRANSPORTE },
-    { key: "fabrica", value: scores.fabrica, color: "#ef4444", label: RESP_LABELS.FABRICA },
-    { key: "montagem", value: scores.montagem, color: "#38bdf8", label: RESP_LABELS.MONTAGEM },
+    {
+      key: "transporte",
+      value: currentScores.transporte,
+      color: "#f59e0b",
+      label: RESPONSIBILITY_LABELS.TRANSPORT_DAMAGE,
+    },
+    {
+      key: "fabrica",
+      value: currentScores.fabrica,
+      color: "#ef4444",
+      label: RESPONSIBILITY_LABELS.FACTORY_DEFECT,
+    },
+    {
+      key: "montagem",
+      value: currentScores.montagem,
+      color: "#38bdf8",
+      label: RESPONSIBILITY_LABELS.ASSEMBLY_ERROR,
+    },
   ];
 
   let offset = 0;

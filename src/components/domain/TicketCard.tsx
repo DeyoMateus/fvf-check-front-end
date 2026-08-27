@@ -15,11 +15,19 @@ interface TicketCardProps {
 /**
  * Card de Ticket reutilizável (Kanban + Tabela mobile).
  * - Foco no Triage Score (responsabilidade)
- * - Resumo do cliente, lote e Danfe
+ * - Resumo do cliente, lote e Danfe/NF-e
  * - SLA + severidade em destaque
  */
 export function TicketCard({ ticket, onClick, compact }: TicketCardProps) {
-  const totalEvidencias = ticket.pecas.reduce((a, p) => a + p.evidencia, 0);
+  // Quantidade de peças afetadas / evidências reportadas
+  const totalEvidencias = ticket.parts?.length ?? 0;
+
+  // Fallbacks visuais para dados nulos ou vazios
+  const displayCode = ticket.code || ticket.id;
+  const displayCustomer = ticket.customerName || "Cliente não informado";
+  const displayCity = ticket.cityName || "Não especificada";
+  const displayNfe = ticket.nfeKey ? `NF-e ${ticket.nfeKey.slice(0, 8)}...` : "Sem NF-e";
+  const displayBatch = ticket.batchNumber ? `Lote ${ticket.batchNumber}` : "Sem lote";
 
   return (
     <button
@@ -32,22 +40,22 @@ export function TicketCard({ ticket, onClick, compact }: TicketCardProps) {
         "shadow-[0_4px_20px_-10px_rgba(0,0,0,0.6)]",
       )}
     >
-      {/* HEADER: ID + SLA */}
+      {/* HEADER: ID/CÓDIGO + SLA */}
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[11px] font-bold tracking-wider text-gold-400">
-          {ticket.id}
+          {displayCode}
         </span>
-        <SlaIndicator hours={ticket.slaHoras} />
+        <SlaIndicator hours={ticket.slaHours ?? 24} />
       </div>
 
       {/* CLIENTE + CIDADE */}
       <div className="mt-3 space-y-1">
         <h4 className="line-clamp-2 text-sm font-semibold leading-snug text-steel-50">
-          {ticket.cliente}
+          {displayCustomer}
         </h4>
         <div className="flex items-center gap-1.5 text-[11px] text-steel-400">
           <MapPin className="h-3 w-3" />
-          <span>{ticket.cidade}</span>
+          <span>{displayCity}</span>
         </div>
       </div>
 
@@ -59,18 +67,18 @@ export function TicketCard({ ticket, onClick, compact }: TicketCardProps) {
             Hipótese dominante
           </p>
           <div className="mt-1.5">
-            <ResponsibilityBadge value={ticket.responsabilidade} />
+            <ResponsibilityBadge value={ticket.suggestedResponsibility ?? "TRANSPORT_DAMAGE"} />
           </div>
         </div>
       </div>
 
       {/* BADGES */}
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        <SeverityBadge value={ticket.severidade} />
-        {ticket.responsavel && (
+        <SeverityBadge value={ticket.severity ?? "MEDIUM"} />
+        {ticket.assignedUser && (
           <span className="inline-flex items-center gap-1 rounded-md border border-steel-700/50 bg-abyss-900/40 px-1.5 py-0.5 text-[10px] text-steel-300">
             <User className="h-3 w-3" />
-            <span className="max-w-[110px] truncate">{ticket.responsavel}</span>
+            <span className="max-w-[110px] truncate">{ticket.assignedUser}</span>
           </span>
         )}
       </div>
@@ -81,14 +89,14 @@ export function TicketCard({ ticket, onClick, compact }: TicketCardProps) {
           <div className="flex items-center gap-1.5">
             <Camera className="h-3 w-3" />
             <span className="tabular-nums">
-              {totalEvidencias} evidência{totalEvidencias !== 1 && "s"}
+              {totalEvidencias} peça{totalEvidencias !== 1 && "s"}/item
             </span>
           </div>
           <div className="flex items-center gap-1.5">
             <FileText className="h-3 w-3" />
-            <span className="font-mono">{ticket.danfe}</span>
+            <span className="font-mono">{displayNfe}</span>
             <span className="text-steel-600">•</span>
-            <span className="font-mono">{ticket.lote}</span>
+            <span className="font-mono">{displayBatch}</span>
           </div>
         </div>
       )}

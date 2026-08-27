@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -17,6 +17,7 @@ import { Topbar } from "./components/layout/Topbar";
 import { TicketKanbanBoard } from "./components/management/TicketKanbanBoard";
 import { TicketTable } from "./components/management/TicketTable";
 import { TicketDrawer } from "./components/management/TicketDrawer";
+import { CreateTicketModal } from "./components/management/CreateTicketModal";
 import { Stat } from "./components/ui/Stat";
 import { Badge } from "./components/ui/Badge";
 import { Tabs } from "./components/ui/Tabs";
@@ -113,12 +114,36 @@ function ModeSwitcher({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => v
 function PainelGestao() {
   const [active, setActive] = useState<PageId>("kanban");
   const [selected, setSelected] = useState<Ticket | null>(null);
+  
+  // ESTADOS DO MODAL E DOS TICKETS SUBIDOS PARA ESTE NÍVEL
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Função centralizada para carregar tickets da API
+  const loadTickets = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await ticketsService.getAll();
+      setTickets(data);
+    } catch (error) {
+      console.error("Erro ao carregar tickets:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTickets();
+  }, [loadTickets]);
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar active={active} onChange={(id) => setActive(id as PageId)} />
+      
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar />
+        {/* Passamos o manipulador de clique para a Topbar */}
+        <Topbar onNewTicket={() => setIsCreateModalOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-24">
           {active === "kanban" && (
@@ -126,6 +151,8 @@ function PainelGestao() {
               view="kanban"
               onViewChange={(v) => setActive(v)}
               onTicketClick={setSelected}
+              tickets={tickets}
+              isLoading={isLoading}
             />
           )}
           {active === "tabela" && (
@@ -133,6 +160,8 @@ function PainelGestao() {
               view="tabela"
               onViewChange={(v) => setActive(v)}
               onTicketClick={setSelected}
+              tickets={tickets}
+              isLoading={isLoading}
             />
           )}
           {active === "fabricas" && <FabricasPage />}
@@ -144,7 +173,18 @@ function PainelGestao() {
         </main>
       </div>
 
+      {/* Drawer de Visualização */}
       <TicketDrawer ticket={selected} onClose={() => setSelected(null)} />
+
+      {/* MODAL DE CRIAÇÃO DE TICKET */}
+      <CreateTicketModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={() => {
+          setIsCreateModalOpen(false);
+          loadTickets(); // Recarrega a lista automaticamente ao criar
+        }}
+      />
     </div>
   );
 }
@@ -155,41 +195,52 @@ function TriagemPage({
   view,
   onViewChange,
   onTicketClick,
+  tickets,
+  isLoading,
 }: {
   view: "kanban" | "tabela";
   onViewChange: (v: "kanban" | "tabela") => void;
   onTicketClick: (t: Ticket) => void;
+  tickets: Ticket[];
+  isLoading: boolean;
 }) {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Busca via ticketsService (tenta GET /tickets real; cai pro mock
-  // automaticamente se o backend ainda não expõe a rota de listagem).
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadTickets() {
-      setIsLoading(true);
-      const data = await ticketsService.getAll();
-      if (!cancelled) {
-        setTickets(data);
-        setIsLoading(false);
-      }
-    }
-
-    loadTickets();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+  // --- CÁLCULOS EM TEMPO REAL (Usando tipos estritos do Backend) ---
   const total = tickets.length;
-  const abertos = tickets.filter((t) => t.status === "ABERTO").length;
-  const criticos = tickets.filter((t) => t.severidade === "CRITICA").length;
+  
+  // Chamados pendentes de tratativa
+  const abertos = tickets.filter(
+    (t) => t.status === "OPEN" || t.status === "UNDER_REVIEW"
+  ).length;
+  
+  const criticos = tickets.filter((t) => t.severity === "CRITICAL").length;
+
+  // Data atual no formato YYYY-MM-DD
+  const hojeStr = new Date().toISOString().split("T")[0];
+
+  // Filtra chamados criados hoje com base no createdAt
+  const ticketsHoje = tickets.filter((t) => {
+    if (!t.createdAt) return false;
+    const dataTicket = new Date(t.createdAt).toISOString().split("T")[0];
+    return dataTicket === hojeStr;
+  });
+
+  // Considera resolvidos os chamados marcados como COMPLETED ou APPROVED
+  const resolvidosHoje = ticketsHoje.filter(
+    (t) => t.status === "COMPLETED" || t.status === "APPROVED"
+  ).length;
+
+  const totalHoje = ticketsHoje.length;
+
+  // Taxa de resolução diária sem divisão por zero
+  const taxaResolucaoHoje = totalHoje > 0 
+    ? Math.round((resolvidosHoje / totalHoje) * 100) 
+    : 0;
+
+  // Agrupamento usando as chaves reais do enum ResponsibilityLabel do Prisma
   const porResp = {
-    transporte: tickets.filter((t) => t.responsabilidade === "TRANSPORTE").length,
-    fabrica: tickets.filter((t) => t.responsabilidade === "FABRICA").length,
-    montagem: tickets.filter((t) => t.responsabilidade === "MONTAGEM").length,
+    transporte: tickets.filter((t) => t.suggestedResponsibility === "TRANSPORT_DAMAGE").length,
+    fabrica: tickets.filter((t) => t.suggestedResponsibility === "FACTORY_DEFECT").length,
+    montagem: tickets.filter((t) => t.suggestedResponsibility === "ASSEMBLY_ERROR").length,
   };
 
   return (
@@ -211,10 +262,9 @@ function TriagemPage({
             em evidências fotográficas, lote e histórico.
           </>
         }
-       
       />
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat
           label="Tickets Abertos"
           value={abertos}
@@ -237,11 +287,18 @@ function TriagemPage({
           tone="default"
         />
         <Stat
-          label="Resolvidos hoje"
-          value="73%"
-          hint="Meta mensal: 85%"
+          label="Resolvidos Hoje"
+          value={resolvidosHoje}
+          hint={`De ${totalHoje} criados hoje`}
           icon={<CheckCircle2 className="h-5 w-5" />}
           tone="info"
+        />
+        <Stat
+          label="Taxa de Resolução"
+          value={`${taxaResolucaoHoje}%`}
+          hint="Meta diária: 85%"
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          tone={taxaResolucaoHoje >= 85 ? "gold" : "info"}
         />
       </section>
 
@@ -273,7 +330,7 @@ function TriagemPage({
             color="#ef4444"
           />
           <RespBar
-            label="Erro de Montagem"
+            label="Erro de Produção"
             icon={<Wrench className="h-4 w-4" />}
             value={porResp.montagem}
             total={total}

@@ -42,22 +42,24 @@ interface AnalyticsResponse {
 export function RelatoriosPage() {
   const [periodo, setPeriodo] = useState<Periodo>("30d");
   const [loading, setLoading] = useState<boolean>(true);
+  const [exportingPdf, setExportingPdf] = useState<boolean>(false);
+  const [exportingCsv, setExportingCsv] = useState<boolean>(false);
   const [data, setData] = useState<AnalyticsResponse | null>(null);
 
   useEffect(() => {
     async function loadAnalytics() {
       try {
         setLoading(true);
-        const token = localStorage.getItem("token"); // Ou seu método de persistência de token JWT
 
         const response = await fetch(
-          `/api/v1/analyst/analytics?periodo=${periodo}`,
+          `http://localhost:3333/api/v1/analyst/analytics?periodo=${periodo}`,
           {
+            method: "GET",
+            credentials: "include", // Crucial: envia o cookie HttpOnly do Fastify
             headers: {
               "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-          },
+          }
         );
 
         if (response.ok) {
@@ -72,11 +74,41 @@ export function RelatoriosPage() {
         setLoading(false);
       }
     }
-
+  
     loadAnalytics();
   }, [periodo]);
 
-  // Cálculos baseados nos dados dinâmicos da API
+  // Função genérica para baixar arquivos (PDF / CSV) via cookies HttpOnly
+  async function handleDownloadFile(endpoint: string, filename: string, setExporting: (val: boolean) => void) {
+    try {
+      setExporting(true);
+
+      const response = await fetch(`http://localhost:3333/api/v1${endpoint}`, {
+        method: "GET",
+        credentials: "include", // Crucial para autenticar via cookie no download
+      });
+
+      if (!response.ok) {
+        throw new Error("Erro ao gerar o arquivo no servidor.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Falha no download:", error);
+      alert("Não foi possível realizar o download do relatório. Tente novamente.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const maxBar = data?.distribuicao
     ? Math.max(
         ...data.distribuicao.flatMap((m) => [
@@ -123,9 +155,12 @@ export function RelatoriosPage() {
               <Calendar className="h-4 w-4" />
               Período custom
             </Button>
-            <Button>
-              <Download className="h-4 w-4" />
-              Exportar PDF
+            <Button 
+              onClick={() => handleDownloadFile(`/analyst/export/pdf?periodo=${periodo}`, `relatorio-executivo-${periodo}.pdf`, setExportingPdf)}
+              disabled={exportingPdf}
+            >
+              {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {exportingPdf ? "Gerando PDF..." : "Exportar PDF"}
             </Button>
           </>
         }
@@ -283,9 +318,15 @@ export function RelatoriosPage() {
           title="Exportações disponíveis"
           body="CSV de tickets, PDF executivo mensal e planilha de RMA por fábrica (compatível SAP/TOTVS)."
           action={
-            <Button variant="outline" size="sm" className="mt-3">
-              <Download className="h-3.5 w-3.5" />
-              Baixar pacote
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mt-3"
+              onClick={() => handleDownloadFile(`/analyst/export/csv?periodo=${periodo}`, `pacote-rma-${periodo}.csv`, setExportingCsv)}
+              disabled={exportingCsv}
+            >
+              {exportingCsv ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {exportingCsv ? "Baixando pacote..." : "Baixar pacote"}
             </Button>
           }
         />

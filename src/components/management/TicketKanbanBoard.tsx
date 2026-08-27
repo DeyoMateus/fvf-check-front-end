@@ -3,7 +3,7 @@ import { Inbox, Filter, ArrowUpDown, Loader2 } from "lucide-react";
 import {
   STATUS_LABELS,
   STATUS_ORDER,
-  type StatusTicket,
+  type TicketStatus,
   type Ticket,
 } from "../../lib/types";
 import { TicketCard } from "../domain/TicketCard";
@@ -16,48 +16,64 @@ interface TicketKanbanBoardProps {
   tickets: Ticket[];
   isLoading?: boolean;
   onTicketClick?: (t: Ticket) => void;
+  onStatusChange?: (ticketId: string, newStatus: TicketStatus) => Promise<void> | void;
 }
 
 type FilterResp = "TODOS" | "TRANSPORTE" | "FABRICA" | "MONTAGEM";
 type SortMode = "sla" | "score" | "recente";
 
-const COL_ACCENT: Record<StatusTicket, string> = {
-  ABERTO: "before:bg-red-500",
-  TRIAGEM: "before:bg-gold-500",
-  EM_ANALISE: "before:bg-sky-500",
-  RESOLVIDO: "before:bg-emerald-500",
-  CANCELADO: "before:bg-steel-500",
+const COL_ACCENT: Record<TicketStatus, string> = {
+  OPEN: "before:bg-red-500",
+  UNDER_REVIEW: "before:bg-gold-500",
+  APPROVED: "before:bg-sky-500",
+  REJECTED: "before:bg-purple-500",
+  COMPLETED: "before:bg-emerald-500",
+  CANCELLED: "before:bg-steel-500",
 };
 
 export function TicketKanbanBoard({
   tickets,
   isLoading,
   onTicketClick,
+  onStatusChange,
 }: TicketKanbanBoardProps) {
   const [items, setItems] = useState<Ticket[]>(tickets);
   const [dragId, setDragId] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState<StatusTicket | null>(null);
+  const [dragOver, setDragOver] = useState<TicketStatus | null>(null);
   const [filter, setFilter] = useState<FilterResp>("TODOS");
   const [sort, setSort] = useState<SortMode>("sla");
 
-  // Sincroniza mock externo
-  useMemo(() => setItems(tickets), [tickets]);
+  // Sincroniza dados externos sempre que a prop "tickets" mudar
+  useMemo(() => {
+    setItems(tickets);
+  }, [tickets]);
 
   const filtered = useMemo(() => {
     let arr = items;
-    if (filter !== "TODOS") arr = arr.filter((t) => t.responsabilidade === filter);
-    if (sort === "sla") arr = [...arr].sort((a, b) => a.slaHoras - b.slaHoras);
+    
+    // Filtro para a chave real do tipo Ticket (suggestedResponsibility)
+    if (filter === "TRANSPORTE") {
+      arr = arr.filter((t) => t.suggestedResponsibility === "TRANSPORT_DAMAGE");
+    } else if (filter === "FABRICA") {
+      arr = arr.filter((t) => t.suggestedResponsibility === "FACTORY_DEFECT");
+    } else if (filter === "MONTAGEM") {
+      arr = arr.filter((t) => t.suggestedResponsibility === "ASSEMBLY_ERROR");
+    }
+
+    if (sort === "sla") {
+      arr = [...arr].sort((a, b) => (a.slaHours ?? 24) - (b.slaHours ?? 24));
+    }
     if (sort === "recente") {
       arr = [...arr].sort(
-        (a, b) => new Date(b.abertoEm).getTime() - new Date(a.abertoEm).getTime(),
+        (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime(),
       );
     }
     if (sort === "score") {
-      arr = [...arr].sort(
-        (a, b) =>
-          Math.max(b.scores.transporte, b.scores.fabrica, b.scores.montagem) -
-          Math.max(a.scores.transporte, a.scores.fabrica, a.scores.montagem),
-      );
+      arr = [...arr].sort((a, b) => {
+        const scoreA = Math.max(a.scores?.transporte ?? 0, a.scores?.fabrica ?? 0, a.scores?.montagem ?? 0);
+        const scoreB = Math.max(b.scores?.transporte ?? 0, b.scores?.fabrica ?? 0, b.scores?.montagem ?? 0);
+        return scoreB - scoreA;
+      });
     }
     return arr;
   }, [items, filter, sort]);
@@ -67,21 +83,36 @@ export function TicketKanbanBoard({
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", id);
   }
-  function handleDragOver(e: DragEvent<HTMLDivElement>, col: StatusTicket) {
+
+  function handleDragOver(e: DragEvent<HTMLDivElement>, col: TicketStatus) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOver(col);
   }
-  function handleDrop(e: DragEvent<HTMLDivElement>, col: StatusTicket) {
+
+  async function handleDrop(e: DragEvent<HTMLDivElement>, col: TicketStatus) {
     e.preventDefault();
     const id = e.dataTransfer.getData("text/plain") || dragId;
     if (!id) return;
+
+    // Atualização otimista na interface local
     setItems((prev) =>
       prev.map((t) => (t.id === id ? { ...t, status: col } : t)),
     );
+
+    // Dispara a requisição para salvar a mudança no backend/banco de dados
+    if (onStatusChange) {
+      try {
+        await onStatusChange(id, col);
+      } catch (error) {
+        console.error("Erro ao atualizar status via drag and drop:", error);
+      }
+    }
+
     setDragId(null);
     setDragOver(null);
   }
+
   function handleDragEnd() {
     setDragId(null);
     setDragOver(null);
