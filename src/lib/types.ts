@@ -19,7 +19,6 @@ export type Severity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 export type PkgCondition = "INTACT" | "DAMAGED";
 
-// Ajuste em DefectType (Alinhado 100% com o Prisma)
 export type DefectType = "BROKEN" | "MISSING" | "HARDWARE_FAULT";
 
 export type MediaType =
@@ -67,25 +66,25 @@ export interface CreateTicketDTO {
    ============================================================ */
 
 export interface Media {
-  id: string;
-  ticketId: string;
+  id?: string; // Alterado para opcional para alinhar com o serviço
+  ticketId?: string;
   ticketPartId?: string | null;
   url: string;
-  type: MediaType;
+  type: MediaType | string;
   latitude?: number | null;
   longitude?: number | null;
-  capturedAt: string;
-  createdAt: string;
+  capturedAt?: string;
+  createdAt?: string;
 }
 
 export interface TicketPart {
   id: string;
-  ticketId: string;
+  ticketId?: string;
   partCode: string;
   quantity: number;
   defectType: DefectType;
   emergencyNotes?: string;
-  createdAt: string;
+  createdAt?: string;
   media?: Media[];
 }
 
@@ -100,10 +99,12 @@ export interface Ticket {
 
   status: TicketStatus;
   suggestedResponsibility?: ResponsibilityLabel;
+  packageCondition?: PkgCondition;
   severity?: Severity;
 
   // Relações e metadados retornados pelo Backend
   customerName?: string;
+  customerPhone?: string;
   cityName?: string;
   nfeKey?: string;
   batchNumber?: string;
@@ -114,6 +115,7 @@ export interface Ticket {
     montagem: number;
   };
   parts?: TicketPart[];
+  mediaFiles?: Media[];
 
   createdAt?: string;
   updatedAt?: string;
@@ -152,4 +154,5 @@ export const STATUS_ORDER: TicketStatus[] = [
   "UNDER_REVIEW",
   "APPROVED",
   "COMPLETED",
+  "CANCELLED",
 ];

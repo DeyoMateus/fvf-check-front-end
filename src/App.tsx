@@ -28,10 +28,10 @@ import { FabricasPage } from "./components/pages/FabricasPage";
 import { PecasLotesPage } from "./components/pages/PecasLotesPage";
 import { MontadoresPage } from "./components/pages/MontadoresPage";
 import { RelatoriosPage } from "./components/pages/RelatoriosPage";
-import { SuportePage } from "./components/pages/SuportePage";
 import { ConfiguracoesPage } from "./components/pages/ConfiguracoesPage";
-import type { Ticket } from "./lib/types";
+import type { Ticket } from "./services/tickets.service";
 import { cn } from "./utils/cn";
+import { TicketsPage } from "./components/pages/TicketsPage";
 
 type Mode = "painel" | "pwa";
 type PageId =
@@ -42,7 +42,8 @@ type PageId =
   | "montadores"
   | "relatorios"
   | "suporte"
-  | "config";
+  | "config"
+  | "tickets";
 
 /* ========== COMPONENTE DE GUARD DE AUTENTICAÇÃO ========== */
 
@@ -168,13 +169,39 @@ function PainelGestao() {
           {active === "pecas" && <PecasLotesPage />}
           {active === "montadores" && <MontadoresPage />}
           {active === "relatorios" && <RelatoriosPage />}
-          {active === "suporte" && <SuportePage />}
           {active === "config" && <ConfiguracoesPage />}
+          {active === "tickets" && <TicketsPage />}
         </main>
       </div>
 
+       
       {/* Drawer de Visualização */}
-      <TicketDrawer ticket={selected} onClose={() => setSelected(null)} />
+      <TicketDrawer 
+        ticket={selected} 
+        onClose={() => setSelected(null)}
+        onStatusChange={async (ticketId, newStatus) => {
+          // Garante que o status enviado obedece ao tipo TicketStatus esperado pelo serviço
+          await ticketsService.updateStatus(ticketId, newStatus as any);
+          loadTickets();
+        }}
+        onAddComment={async (ticketId, comment) => {
+          // Salva o comentário real na API através do método do service
+          await ticketsService.addComment(ticketId, comment);
+          loadTickets();
+        }}
+        onTriggerAction={async (actionType, ticketId) => {
+          // Trata as ações acionadas pelos botões rápidos do Drawer
+          if (actionType === "TRANSPORTE_CLAIM") {
+            await ticketsService.updateResponsibility(ticketId, "TRANSPORT_DAMAGE");
+          } else if (actionType === "FACTORY_RMA") {
+            await ticketsService.updateResponsibility(ticketId, "FACTORY_DEFECT");
+          } else if (actionType === "TECH_VISIT") {
+            await ticketsService.updateResponsibility(ticketId, "ASSEMBLY_ERROR");
+          }
+          console.log("Ação disparada:", actionType, ticketId);
+          loadTickets();
+        }}
+      />
 
       {/* MODAL DE CRIAÇÃO DE TICKET */}
       <CreateTicketModal

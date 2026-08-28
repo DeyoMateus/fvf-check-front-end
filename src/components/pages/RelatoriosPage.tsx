@@ -16,28 +16,11 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Tabs } from "../ui/Tabs";
 import { cn } from "../../utils/cn";
-
-type Periodo = "7d" | "30d" | "90d" | "12m";
-
-interface AnalyticsResponse {
-  kpis: Array<{
-    label: string;
-    valor: string;
-    delta: string;
-    positivo: boolean;
-  }>;
-  distribuicao: Array<{
-    mes: string;
-    transporte: number;
-    fabrica: number;
-    montagem: number;
-  }>;
-  topDefeitos: Array<{
-    nome: string;
-    cat: "TRANSPORTE" | "FABRICA" | "MONTAGEM";
-    qtd: number;
-  }>;
-}
+import {
+  reportsService,
+  Periodo,
+  AnalyticsResponse,
+} from "../../services/reports.service";
 
 export function RelatoriosPage() {
   const [periodo, setPeriodo] = useState<Periodo>("30d");
@@ -50,49 +33,26 @@ export function RelatoriosPage() {
     async function loadAnalytics() {
       try {
         setLoading(true);
-
-        const response = await fetch(
-          `http://localhost:3333/api/v1/analyst/analytics?periodo=${periodo}`,
-          {
-            method: "GET",
-            credentials: "include", // Crucial: envia o cookie HttpOnly do Fastify
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (response.ok) {
-          const result = await response.json();
-          setData(result);
-        } else {
-          console.error("Erro ao buscar analytics:", response.statusText);
-        }
+        const result = await reportsService.getAnalytics(periodo);
+        setData(result);
       } catch (error) {
         console.error("Falha na requisição de analytics:", error);
       } finally {
         setLoading(false);
       }
     }
-  
+
     loadAnalytics();
   }, [periodo]);
 
-  // Função genérica para baixar arquivos (PDF / CSV) via cookies HttpOnly
-  async function handleDownloadFile(endpoint: string, filename: string, setExporting: (val: boolean) => void) {
+  async function handleDownloadFile(
+    endpoint: string,
+    filename: string,
+    setExporting: (val: boolean) => void
+  ) {
     try {
       setExporting(true);
-
-      const response = await fetch(`http://localhost:3333/api/v1${endpoint}`, {
-        method: "GET",
-        credentials: "include", // Crucial para autenticar via cookie no download
-      });
-
-      if (!response.ok) {
-        throw new Error("Erro ao gerar o arquivo no servidor.");
-      }
-
-      const blob = await response.blob();
+      const blob = await reportsService.downloadFile(endpoint);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -116,7 +76,7 @@ export function RelatoriosPage() {
           m.fabrica,
           m.montagem,
         ]),
-        1,
+        1
       )
     : 1;
 
@@ -155,11 +115,21 @@ export function RelatoriosPage() {
               <Calendar className="h-4 w-4" />
               Período custom
             </Button>
-            <Button 
-              onClick={() => handleDownloadFile(`/analyst/export/pdf?periodo=${periodo}`, `relatorio-executivo-${periodo}.pdf`, setExportingPdf)}
+            <Button
+              onClick={() =>
+                handleDownloadFile(
+                  `/analyst/export/pdf?periodo=${periodo}`,
+                  `relatorio-executivo-${periodo}.pdf`,
+                  setExportingPdf
+                )
+              }
               disabled={exportingPdf}
             >
-              {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {exportingPdf ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
               {exportingPdf ? "Gerando PDF..." : "Exportar PDF"}
             </Button>
           </>
@@ -182,7 +152,7 @@ export function RelatoriosPage() {
             <p
               className={cn(
                 "mt-1 inline-flex items-center gap-1 text-[11px] font-semibold",
-                k.positivo ? "text-emerald-300" : "text-amber-300",
+                k.positivo ? "text-emerald-300" : "text-amber-300"
               )}
             >
               {k.positivo ? (
@@ -257,14 +227,14 @@ export function RelatoriosPage() {
                 d.cat === "TRANSPORTE"
                   ? "warning"
                   : d.cat === "FABRICA"
-                    ? "danger"
-                    : "info";
+                  ? "danger"
+                  : "info";
               const Icon =
                 d.cat === "TRANSPORTE"
                   ? Truck
                   : d.cat === "FABRICA"
-                    ? Factory
-                    : Wrench;
+                  ? Factory
+                  : Wrench;
               return (
                 <li key={d.nome}>
                   <div className="flex items-center justify-between gap-2 text-sm">
@@ -280,8 +250,8 @@ export function RelatoriosPage() {
                         {d.cat === "TRANSPORTE"
                           ? "Transporte"
                           : d.cat === "FABRICA"
-                            ? "Fábrica"
-                            : "Montagem"}
+                          ? "Fábrica"
+                          : "Montagem"}
                       </Badge>
                       <span className="font-mono text-xs font-bold text-steel-200">
                         {d.qtd}
@@ -306,7 +276,7 @@ export function RelatoriosPage() {
         <InsightCard
           icon={<BarChart3 className="h-5 w-5" />}
           title="SLA de triagem"
-          body="Tempo médio caiu 18% com a automação de scores. Mantenha o foco em tickets críticos < 2h."
+          body="Tempo médio otimizado com a automação de scores do ecossistema."
         />
         <InsightCard
           icon={<Factory className="h-5 w-5" />}
@@ -316,16 +286,26 @@ export function RelatoriosPage() {
         <InsightCard
           icon={<FileSpreadsheet className="h-5 w-5" />}
           title="Exportações disponíveis"
-          body="CSV de tickets, PDF executivo mensal e planilha de RMA por fábrica (compatível SAP/TOTVS)."
+          body="CSV de tickets, PDF executivo mensal e pacotes compatíveis com SAP/TOTVS."
           action={
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="mt-3"
-              onClick={() => handleDownloadFile(`/analyst/export/csv?periodo=${periodo}`, `pacote-rma-${periodo}.csv`, setExportingCsv)}
+              onClick={() =>
+                handleDownloadFile(
+                  `/analyst/export/csv?periodo=${periodo}`,
+                  `pacote-rma-${periodo}.csv`,
+                  setExportingCsv
+                )
+              }
               disabled={exportingCsv}
             >
-              {exportingCsv ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {exportingCsv ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
               {exportingCsv ? "Baixando pacote..." : "Baixar pacote"}
             </Button>
           }

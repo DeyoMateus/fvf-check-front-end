@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Bell,
   Building2,
@@ -16,6 +16,7 @@ import { PageHeader } from "../ui/PageHeader";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { cn } from "../../utils/cn";
+import { settingsService } from "../../services/settings.Service"; // Ajuste o caminho se necessário
 
 type Section =
   | "perfil"
@@ -42,13 +43,14 @@ const SECTIONS: {
 export function ConfiguracoesPage() {
   const [section, setSection] = useState<Section>("perfil");
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // form state
-  const [nome, setNome] = useState("Carlos Drumond");
-  const [email, setEmail] = useState("carlos.drumond@fvfcheck.com.br");
-  const [cargo, setCargo] = useState("Gestor de Triagem");
-  const [empresa, setEmpresa] = useState("Rede Concept Móveis");
-  const [cnpj, setCnpj] = useState("11.222.333/0001-44");
+  const [nome, setNome] = useState("");
+  const [email, setEmail] = useState("");
+  const [cargo, setCargo] = useState("");
+  const [empresa, setEmpresa] = useState("");
+  const [cnpj, setCnpj] = useState("");
   const [timezone, setTimezone] = useState("America/Sao_Paulo");
 
   const [notifEmail, setNotifEmail] = useState(true);
@@ -63,9 +65,47 @@ export function ConfiguracoesPage() {
   const [twoFa, setTwoFa] = useState(true);
   const [sessaoUnica, setSessaoUnica] = useState(false);
 
-  function salvar() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const data = await settingsService.getSettings();
+        if (data) {
+          setNome(data.nome || "Carlos Drumond");
+          setEmail(data.email || "carlos.drumond@fvfcheck.com.br");
+          setCargo(data.cargo || "Gestor de Triagem");
+          setEmpresa(data.empresa || "Rede Concept Móveis");
+          setCnpj(data.cnpj || "11.222.333/0001-44");
+          setTimezone(data.timezone || "America/Sao_Paulo");
+          // Atualize outros estados conforme o payload retornado pela API
+        }
+      } catch (error) {
+        console.error("Erro ao carregar configurações:", error);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  async function salvar() {
+    try {
+      setLoading(true);
+      await settingsService.updateSettings({
+        nome,
+        email,
+        cargo,
+        empresa,
+        cnpj,
+        timezone,
+        notifications: { notifEmail, notifPush, notifSla, notifRma },
+        integrations: { sapOn, totvsOn, whatsOn },
+        security: { twoFa, sessaoUnica },
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (error) {
+      console.error("Erro ao salvar configurações:", error);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -79,9 +119,9 @@ export function ConfiguracoesPage() {
         }
         description="Preferências da conta, dados da operação, integrações ERP e políticas de segurança."
         actions={
-          <Button onClick={salvar}>
+          <Button onClick={salvar} disabled={loading}>
             {saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-            {saved ? "Salvo" : "Salvar alterações"}
+            {saved ? "Salvo" : loading ? "Salvando..." : "Salvar alterações"}
           </Button>
         }
       />

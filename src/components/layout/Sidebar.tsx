@@ -24,6 +24,7 @@ interface SidebarProps {
 const NAV = [
   { id: "kanban", label: "Triagem", icon: LayoutDashboard },
   { id: "tabela", label: "Tabela Tática", icon: Inbox },
+  { id: "tickets", label: "Gestão de Ticket", icon: LifeBuoy },
   { id: "fabricas", label: "Fábricas", icon: Factory },
   { id: "pecas", label: "Peças & Lotes", icon: PackageSearch },
   { id: "montadores", label: "Montadores", icon: Users },
@@ -31,7 +32,6 @@ const NAV = [
 ];
 
 const FOOT = [
-  { id: "suporte", label: "Suporte 24/7", icon: LifeBuoy },
   { id: "config", label: "Configurações", icon: Settings },
 ];
 
