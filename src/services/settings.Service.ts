@@ -1,4 +1,4 @@
-import { api } from "../lib/api"; // ou fetch nativo
+import { api } from "../lib/api";
 
 export interface SettingsDTO {
   nome?: string;
@@ -12,14 +12,25 @@ export interface SettingsDTO {
   security?: Record<string, boolean>;
 }
 
+export interface UpdateSettingsPayload {
+  nome?: string;
+  email?: string;
+  empresa?: string;
+  cnpj?: string;
+  timezone?: string;
+  notifications?: Record<string, boolean>;
+  integrations?: Record<string, boolean>;
+  security?: Record<string, boolean>;
+}
+
 export const settingsService = {
   async getSettings(): Promise<SettingsDTO> {
-    const response = await api.get("/settings");
+    const response = await api.get<SettingsDTO>("/settings");
     return response.data;
   },
 
-  async updateSettings(data: SettingsDTO): Promise<SettingsDTO> {
-    const response = await api.put("/settings", data);
+  async updateSettings(data: UpdateSettingsPayload) {
+    const response = await api.put<{ message: string }>("/settings", data);
     return response.data;
   },
 };

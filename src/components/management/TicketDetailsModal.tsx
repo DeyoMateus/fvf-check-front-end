@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   X,
   CheckCircle2,
@@ -10,10 +10,12 @@ import {
   Truck,
   Wrench,
   Loader2,
+  Trash2,
   Image as ImageIcon,
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { toast } from "sonner";
 import {
   ticketsService,
   STATUS_LABELS,
@@ -51,21 +53,32 @@ export function TicketDetailsModal({
   onClose,
   onRefresh,
 }: TicketDetailsModalProps) {
+  const [currentTicket, setCurrentTicket] = useState<Ticket | null>(ticket);
   const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [selectedResponsibility, setSelectedResponsibility] = useState<
     ResponsibilityLabel | undefined
   >(ticket?.suggestedResponsibility);
 
-  if (!isOpen || !ticket) return null;
+  useEffect(() => {
+    setCurrentTicket(ticket);
+    setSelectedResponsibility(ticket?.suggestedResponsibility);
+  }, [ticket]);
+
+  if (!isOpen || !currentTicket) return null;
 
   async function handleStatusChange(newStatus: TicketStatus) {
     try {
       setUpdating(true);
-      await ticketsService.updateStatus(ticket!.id, newStatus);
+      await ticketsService.updateStatus(currentTicket!.id, newStatus);
+      
+      // Atualiza o estado local imediatamente para refletir na UI sem precisar reabrir o modal
+      setCurrentTicket((prev) => (prev ? { ...prev, status: newStatus } : null));
+      toast.success(`Status atualizado para ${STATUS_LABELS[newStatus] || newStatus}`);
       onRefresh();
-      onClose();
     } catch (error) {
       console.error("Erro ao atualizar status:", error);
+      toast.error("Erro ao atualizar o status do chamado.");
     } finally {
       setUpdating(false);
     }
@@ -77,13 +90,41 @@ export function TicketDetailsModal({
     try {
       setUpdating(true);
       setSelectedResponsibility(responsibility);
-      await ticketsService.updateResponsibility(ticket!.id, responsibility);
+      await ticketsService.updateResponsibility(currentTicket!.id, responsibility);
+      
+      setCurrentTicket((prev) => (prev ? { ...prev, suggestedResponsibility: responsibility } : null));
+      toast.success("Responsabilidade atribuída com sucesso!");
       onRefresh();
     } catch (error) {
       console.error("Erro ao atribuir responsabilidade:", error);
+      toast.error("Erro ao atribuir responsabilidade.");
     } finally {
       setUpdating(false);
     }
+  }
+
+  async function handleDeleteTicket() {
+    toast("Deseja realmente excluir este chamado?", {
+      action: {
+        label: "Sim, excluir",
+        onClick: async () => {
+          try {
+            setDeleting(true);
+            await ticketsService.delete(currentTicket!.id);
+            toast.success("Chamado excluído com sucesso.");
+            onRefresh();
+            onClose();
+          } catch (error: any) {
+            toast.error(
+              error?.response?.data?.message ||
+                "Você não tem permissão para excluir este chamado (já em andamento)."
+            );
+          } finally {
+            setDeleting(false);
+          }
+        },
+      },
+    });
   }
 
   return (
@@ -94,28 +135,28 @@ export function TicketDetailsModal({
         <div className="flex items-center justify-between border-b border-steel-800 bg-abyss-950 px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-gold-500/30 bg-gold-500/10 text-gold-300 font-mono text-xs font-bold">
-              #{ticket.code || ticket.id.slice(0, 6)}
+              #{currentTicket.code || currentTicket.id.slice(0, 6)}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-steel-50 text-base">
                   Detalhes do Chamado
                 </h3>
-                <Badge variant={STATUS_VARIANTS[ticket.status] || "muted"}>
-                  {STATUS_LABELS[ticket.status] || ticket.status}
+                <Badge variant={STATUS_VARIANTS[currentTicket.status] || "muted"}>
+                  {STATUS_LABELS[currentTicket.status] || currentTicket.status}
                 </Badge>
               </div>
               <p className="text-xs text-steel-400">
                 Aberto em{" "}
-                {ticket.createdAt
-                  ? new Date(ticket.createdAt).toLocaleDateString("pt-BR")
+                {currentTicket.createdAt
+                  ? new Date(currentTicket.createdAt).toLocaleDateString("pt-BR")
                   : "N/A"}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-steel-400 hover:bg-abyss-800 hover:text-white transition-colors"
+            className="rounded-lg p-1.5 text-steel-400 hover:bg-abyss-800 hover:text-white transition-colors cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -124,20 +165,34 @@ export function TicketDetailsModal({
         {/* Conteúdo */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           
-          {/* Ações Rápidas de Status */}
+          {/* Ações Rápidas de Status (Incluindo OPEN, UNDER_REVIEW, APPROVED, REJECTED) */}
           <div className="rounded-xl border border-steel-700/50 bg-abyss-950/60 p-4">
             <span className="text-[10px] font-bold uppercase tracking-widest text-gold-400 block mb-3">
               Atualizar Status em Tempo Real
             </span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
-                disabled={updating || ticket.status === "UNDER_REVIEW"}
+                disabled={updating || currentTicket.status === "OPEN"}
+                onClick={() => handleStatusChange("OPEN")}
+                className={cn(
+                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
+                  currentTicket.status === "OPEN"
+                    ? "border-amber-500/50 bg-amber-500/20 text-amber-300 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.3)]"
+                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-amber-500/40 hover:text-amber-300"
+                )}
+              >
+                <Clock className="h-4 w-4" />
+                Aberto
+              </button>
+
+              <button
+                disabled={updating || currentTicket.status === "UNDER_REVIEW"}
                 onClick={() => handleStatusChange("UNDER_REVIEW")}
                 className={cn(
-                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all",
-                  ticket.status === "UNDER_REVIEW"
-                    ? "border-amber-500/50 bg-amber-500/20 text-amber-300"
-                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-amber-500/40 hover:text-amber-300"
+                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
+                  currentTicket.status === "UNDER_REVIEW"
+                    ? "border-blue-500/50 bg-blue-500/20 text-blue-300 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.3)]"
+                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-blue-500/40 hover:text-blue-300"
                 )}
               >
                 <Clock className="h-4 w-4" />
@@ -145,12 +200,12 @@ export function TicketDetailsModal({
               </button>
 
               <button
-                disabled={updating || ticket.status === "APPROVED"}
+                disabled={updating || currentTicket.status === "APPROVED"}
                 onClick={() => handleStatusChange("APPROVED")}
                 className={cn(
-                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all",
-                  ticket.status === "APPROVED"
-                    ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
+                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
+                  currentTicket.status === "APPROVED"
+                    ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.3)]"
                     : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-emerald-500/40 hover:text-emerald-300"
                 )}
               >
@@ -159,12 +214,12 @@ export function TicketDetailsModal({
               </button>
 
               <button
-                disabled={updating || ticket.status === "REJECTED"}
+                disabled={updating || currentTicket.status === "REJECTED"}
                 onClick={() => handleStatusChange("REJECTED")}
                 className={cn(
-                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all",
-                  ticket.status === "REJECTED"
-                    ? "border-red-500/50 bg-red-500/20 text-red-300"
+                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
+                  currentTicket.status === "REJECTED"
+                    ? "border-red-500/50 bg-red-500/20 text-red-300 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.3)]"
                     : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-red-500/40 hover:text-red-300"
                 )}
               >
@@ -203,14 +258,14 @@ export function TicketDetailsModal({
                 },
               ].map(({ id, label, icon: Icon }) => {
                 const active =
-                  (selectedResponsibility || ticket.suggestedResponsibility) === id;
+                  (selectedResponsibility || currentTicket.suggestedResponsibility) === id;
                 return (
                   <button
                     key={id}
                     disabled={updating}
                     onClick={() => handleAssignResponsibility(id)}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-lg border p-2.5 text-xs font-semibold transition-all text-left",
+                      "flex items-center gap-2.5 rounded-lg border p-2.5 text-xs font-semibold transition-all text-left cursor-pointer",
                       active
                         ? "border-gold-500/60 bg-gold-500/10 text-gold-200 shadow-[inset_0_0_0_1px_rgba(227,185,33,0.3)]"
                         : "border-steel-700/60 bg-abyss-900/60 text-steel-300 hover:text-steel-100"
@@ -236,10 +291,10 @@ export function TicketDetailsModal({
                 <User className="h-3.5 w-3.5 text-gold-400" /> Consumidor
               </span>
               <p className="font-semibold text-steel-100">
-                {ticket.customerName || "Não informado"}
+                {currentTicket.customerName || "Não informado"}
               </p>
               <p className="text-steel-400">
-                {ticket.customerPhone || "Sem telefone"}
+                {currentTicket.customerPhone || "Sem telefone"}
               </p>
             </div>
 
@@ -248,12 +303,12 @@ export function TicketDetailsModal({
                 <FileText className="h-3.5 w-3.5 text-gold-400" /> Nota Fiscal (DANFE)
               </span>
               <p className="font-mono text-steel-100 truncate">
-                {ticket.nfeKey || "N/A"}
+                {currentTicket.nfeKey || "N/A"}
               </p>
               <p className="text-steel-400">
                 Embalagem:{" "}
                 <strong className="text-steel-200">
-                  {ticket.packageCondition === "DAMAGED"
+                  {currentTicket.packageCondition === "DAMAGED"
                     ? "Avariada"
                     : "Intacta"}
                 </strong>
@@ -264,15 +319,15 @@ export function TicketDetailsModal({
           {/* Peças Avariadas Registradas */}
           <div className="rounded-xl border border-steel-800 bg-abyss-950/40 p-4 space-y-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-steel-400 block">
-              Peças / Defeitos Notificados ({ticket.parts?.length || 0})
+              Peças / Defeitos Notificados ({currentTicket.parts?.length || 0})
             </span>
-            {!ticket.parts || ticket.parts.length === 0 ? (
+            {!currentTicket.parts || currentTicket.parts.length === 0 ? (
               <p className="text-xs text-steel-500 italic">
                 Nenhuma peça listada diretamente.
               </p>
             ) : (
               <div className="space-y-2">
-                {ticket.parts.map((part: TicketPart, i: number) => (
+                {currentTicket.parts.map((part: TicketPart, i: number) => (
                   <div
                     key={i}
                     className="flex items-center justify-between rounded-lg border border-steel-800 bg-abyss-900/60 p-3 text-xs"
@@ -303,15 +358,15 @@ export function TicketDetailsModal({
           {/* Mídias / Evidências */}
           <div className="rounded-xl border border-steel-800 bg-abyss-950/40 p-4 space-y-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-steel-400 flex items-center gap-1.5">
-              <ImageIcon className="h-3.5 w-3.5 text-gold-400" /> Evidências Anexadas ({ticket.mediaFiles?.length || 0})
+              <ImageIcon className="h-3.5 w-3.5 text-gold-400" /> Evidências Anexadas ({currentTicket.mediaFiles?.length || 0})
             </span>
-            {!ticket.mediaFiles || ticket.mediaFiles.length === 0 ? (
+            {!currentTicket.mediaFiles || currentTicket.mediaFiles.length === 0 ? (
               <p className="text-xs text-steel-500 italic">
                 Nenhuma evidência registrada.
               </p>
             ) : (
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {ticket.mediaFiles.map((m: Media, idx: number) => (
+                {currentTicket.mediaFiles.map((m: Media, idx: number) => (
                   <a
                     key={idx}
                     href={m.url}
@@ -335,9 +390,20 @@ export function TicketDetailsModal({
 
         </div>
 
-        {/* Rodapé */}
-        <div className="flex justify-end border-t border-steel-800 bg-abyss-950 px-6 py-4">
-          <Button variant="secondary" onClick={onClose}>
+        {/* Rodapé com Ação de Excluir e Fechar */}
+        <div className="flex items-center justify-between border-t border-steel-800 bg-abyss-950 px-6 py-4">
+          <Button
+            type="button"
+            variant="danger"
+            onClick={handleDeleteTicket}
+            disabled={deleting}
+            className="flex items-center gap-1.5 text-xs bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 cursor-pointer"
+          >
+            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Excluir Chamado
+          </Button>
+
+          <Button type="button" variant="secondary" onClick={onClose} className="cursor-pointer">
             Fechar
           </Button>
         </div>

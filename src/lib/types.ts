@@ -119,6 +119,7 @@ export interface Ticket {
 
   createdAt?: string;
   updatedAt?: string;
+  dueDate?: string;
   slaHours?: number;
   assignedUser?: string;
 }

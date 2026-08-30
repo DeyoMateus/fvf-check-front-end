@@ -32,6 +32,8 @@ import { ConfiguracoesPage } from "./components/pages/ConfiguracoesPage";
 import type { Ticket } from "./services/tickets.service";
 import { cn } from "./utils/cn";
 import { TicketsPage } from "./components/pages/TicketsPage";
+import { toast } from 'sonner';
+import { TicketStatus } from "./lib/types";
 
 type Mode = "painel" | "pwa";
 type PageId =
@@ -116,19 +118,31 @@ function PainelGestao() {
   const [active, setActive] = useState<PageId>("kanban");
   const [selected, setSelected] = useState<Ticket | null>(null);
   
-  // ESTADOS DO MODAL E DOS TICKETS SUBIDOS PARA ESTE NÍVEL
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Função centralizada para carregar tickets da API
+  useEffect(() => {
+    if (selected) {
+      const updatedCurrent = tickets.find((t) => t.id === selected.id);
+      if (updatedCurrent && JSON.stringify(updatedCurrent) !== JSON.stringify(selected)) {
+        setSelected(updatedCurrent);
+      }
+    }
+  }, [tickets, selected]);
+
   const loadTickets = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await ticketsService.getAll();
-      setTickets(data);
+      if (Array.isArray(data)) {
+        setTickets(data);
+      } else {
+        setTickets([]);
+      }
     } catch (error) {
       console.error("Erro ao carregar tickets:", error);
+      setTickets([]);
     } finally {
       setIsLoading(false);
     }
@@ -138,12 +152,43 @@ function PainelGestao() {
     loadTickets();
   }, [loadTickets]);
 
+  // Função central para alterar status usada tanto pelo Drawer quanto pelo Kanban (Drag & Drop)
+  const handleStatusChange = useCallback(async (ticketId: string, newStatus: TicketStatus) => {
+    const typedStatus = newStatus as TicketStatus;
+
+    // 1. Atualização Otimista
+    setTickets((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, status: typedStatus } : t))
+    );
+
+    setSelected((prev: Ticket | null) =>
+      prev && prev.id === ticketId ? { ...prev, status: typedStatus } : prev
+    );
+
+    // 2. Persistência na API
+    try {
+      await ticketsService.updateStatus(ticketId, typedStatus);
+      toast.success("Status atualizado com sucesso!", {
+        position: "top-center",
+        style: {
+          fontSize: "16px",
+          fontWeight: "600",
+          padding: "16px 28px",
+          borderRadius: "12px",
+        },
+      });
+    } catch (err) {
+      toast.error("Erro ao sincronizar status com o servidor.", {
+        position: "top-center",
+      });
+    }
+  }, []);
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar active={active} onChange={(id) => setActive(id as PageId)} />
       
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Passamos o manipulador de clique para a Topbar */}
         <Topbar onNewTicket={() => setIsCreateModalOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-24">
@@ -154,6 +199,7 @@ function PainelGestao() {
               onTicketClick={setSelected}
               tickets={tickets}
               isLoading={isLoading}
+              onStatusChange={handleStatusChange}
             />
           )}
           {active === "tabela" && (
@@ -163,6 +209,7 @@ function PainelGestao() {
               onTicketClick={setSelected}
               tickets={tickets}
               isLoading={isLoading}
+              onStatusChange={handleStatusChange}
             />
           )}
           {active === "fabricas" && <FabricasPage />}
@@ -174,23 +221,16 @@ function PainelGestao() {
         </main>
       </div>
 
-       
-      {/* Drawer de Visualização */}
       <TicketDrawer 
+        key={selected ? `${selected.id}-${selected.status}` : 'drawer-closed'}
         ticket={selected} 
         onClose={() => setSelected(null)}
-        onStatusChange={async (ticketId, newStatus) => {
-          // Garante que o status enviado obedece ao tipo TicketStatus esperado pelo serviço
-          await ticketsService.updateStatus(ticketId, newStatus as any);
-          loadTickets();
-        }}
+        onStatusChange={handleStatusChange}
         onAddComment={async (ticketId, comment) => {
-          // Salva o comentário real na API através do método do service
           await ticketsService.addComment(ticketId, comment);
           loadTickets();
         }}
         onTriggerAction={async (actionType, ticketId) => {
-          // Trata as ações acionadas pelos botões rápidos do Drawer
           if (actionType === "TRANSPORTE_CLAIM") {
             await ticketsService.updateResponsibility(ticketId, "TRANSPORT_DAMAGE");
           } else if (actionType === "FACTORY_RMA") {
@@ -198,18 +238,16 @@ function PainelGestao() {
           } else if (actionType === "TECH_VISIT") {
             await ticketsService.updateResponsibility(ticketId, "ASSEMBLY_ERROR");
           }
-          console.log("Ação disparada:", actionType, ticketId);
           loadTickets();
         }}
       />
 
-      {/* MODAL DE CRIAÇÃO DE TICKET */}
       <CreateTicketModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={() => {
           setIsCreateModalOpen(false);
-          loadTickets(); // Recarrega a lista automaticamente ao criar
+          loadTickets();
         }}
       />
     </div>
@@ -224,50 +262,46 @@ function TriagemPage({
   onTicketClick,
   tickets,
   isLoading,
+  onStatusChange,
 }: {
   view: "kanban" | "tabela";
   onViewChange: (v: "kanban" | "tabela") => void;
   onTicketClick: (t: Ticket) => void;
   tickets: Ticket[];
   isLoading: boolean;
+  onStatusChange?: (ticketId: string, newStatus: TicketStatus) => Promise<void> | void;
 }) {
-  // --- CÁLCULOS EM TEMPO REAL (Usando tipos estritos do Backend) ---
-  const total = tickets.length;
+  const safeTickets = Array.isArray(tickets) ? tickets : [];
+  const total = safeTickets.length;
   
-  // Chamados pendentes de tratativa
-  const abertos = tickets.filter(
+  const abertos = safeTickets.filter(
     (t) => t.status === "OPEN" || t.status === "UNDER_REVIEW"
   ).length;
   
-  const criticos = tickets.filter((t) => t.severity === "CRITICAL").length;
+  const criticos = safeTickets.filter((t) => t.severity === "CRITICAL").length;
 
-  // Data atual no formato YYYY-MM-DD
   const hojeStr = new Date().toISOString().split("T")[0];
 
-  // Filtra chamados criados hoje com base no createdAt
-  const ticketsHoje = tickets.filter((t) => {
+  const ticketsHoje = safeTickets.filter((t) => {
     if (!t.createdAt) return false;
     const dataTicket = new Date(t.createdAt).toISOString().split("T")[0];
     return dataTicket === hojeStr;
   });
 
-  // Considera resolvidos os chamados marcados como COMPLETED ou APPROVED
   const resolvidosHoje = ticketsHoje.filter(
     (t) => t.status === "COMPLETED" || t.status === "APPROVED"
   ).length;
 
   const totalHoje = ticketsHoje.length;
 
-  // Taxa de resolução diária sem divisão por zero
   const taxaResolucaoHoje = totalHoje > 0 
     ? Math.round((resolvidosHoje / totalHoje) * 100) 
     : 0;
 
-  // Agrupamento usando as chaves reais do enum ResponsibilityLabel do Prisma
   const porResp = {
-    transporte: tickets.filter((t) => t.suggestedResponsibility === "TRANSPORT_DAMAGE").length,
-    fabrica: tickets.filter((t) => t.suggestedResponsibility === "FACTORY_DEFECT").length,
-    montagem: tickets.filter((t) => t.suggestedResponsibility === "ASSEMBLY_ERROR").length,
+    transporte: safeTickets.filter((t) => t.suggestedResponsibility === "TRANSPORT_DAMAGE").length,
+    fabrica: safeTickets.filter((t) => t.suggestedResponsibility === "FACTORY_DEFECT").length,
+    montagem: safeTickets.filter((t) => t.suggestedResponsibility === "ASSEMBLY_ERROR").length,
   };
 
   return (
@@ -383,9 +417,19 @@ function TriagemPage({
         </div>
 
         {view === "kanban" ? (
-          <TicketKanbanBoard tickets={tickets} isLoading={isLoading} onTicketClick={onTicketClick} />
+          <TicketKanbanBoard
+            key={tickets.map((t) => `${t.id}-${t.status}`).join("|")}
+            tickets={safeTickets}
+            isLoading={isLoading}
+            onTicketClick={onTicketClick}
+            onStatusChange={onStatusChange}
+          />
         ) : (
-          <TicketTable tickets={tickets} onTicketClick={onTicketClick} />
+          <TicketTable
+            key={tickets.map((t) => `${t.id}-${t.status}`).join("|")}
+            tickets={safeTickets}
+            onTicketClick={onTicketClick}
+          />
         )}
       </section>
     </div>

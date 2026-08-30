@@ -37,21 +37,15 @@ export function TicketKanbanBoard({
   onTicketClick,
   onStatusChange,
 }: TicketKanbanBoardProps) {
-  const [items, setItems] = useState<Ticket[]>(tickets);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<TicketStatus | null>(null);
   const [filter, setFilter] = useState<FilterResp>("TODOS");
   const [sort, setSort] = useState<SortMode>("sla");
 
-  // Sincroniza dados externos sempre que a prop "tickets" mudar
-  useMemo(() => {
-    setItems(tickets);
-  }, [tickets]);
-
+  // Filtra e ordena diretamente a prop "tickets" enviada pelo App.tsx
   const filtered = useMemo(() => {
-    let arr = items;
+    let arr = tickets;
     
-    // Filtro para a chave real do tipo Ticket (suggestedResponsibility)
     if (filter === "TRANSPORTE") {
       arr = arr.filter((t) => t.suggestedResponsibility === "TRANSPORT_DAMAGE");
     } else if (filter === "FABRICA") {
@@ -76,7 +70,7 @@ export function TicketKanbanBoard({
       });
     }
     return arr;
-  }, [items, filter, sort]);
+  }, [tickets, filter, sort]);
 
   function handleDragStart(e: DragEvent<HTMLDivElement>, id: string) {
     setDragId(id);
@@ -95,12 +89,7 @@ export function TicketKanbanBoard({
     const id = e.dataTransfer.getData("text/plain") || dragId;
     if (!id) return;
 
-    // Atualização otimista na interface local
-    setItems((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: col } : t)),
-    );
-
-    // Dispara a requisição para salvar a mudança no backend/banco de dados
+    // Notifica o componente pai (App.tsx) que atualizará o estado global imediatamente
     if (onStatusChange) {
       try {
         await onStatusChange(id, col);

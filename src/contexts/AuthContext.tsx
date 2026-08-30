@@ -10,6 +10,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>; // 👈 Novo método adicionado
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -18,15 +19,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Ao carregar a página, checa se o cookie HttpOnly ainda é válido
-  // chamando /auth/me — não guardamos token nenhum no front.
+  async function refreshUser() {
+    try {
+      const data = await authService.me();
+      setUser(data.user);
+    } catch {
+      setUser(null);
+    }
+  }
+
   useEffect(() => {
     async function checkAuth() {
       try {
-        const data = await authService.me();
-        setUser(data.user);
-      } catch {
-        setUser(null);
+        await refreshUser();
       } finally {
         setIsLoading(false);
       }
@@ -35,12 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function login(credentials: LoginCredentials) {
-    const data = await authService.login(credentials);
-    // Login não devolve "active"/"tenant" completo — busca o perfil
-    // completo em seguida pra manter o estado consistente com /auth/me.
-    const me = await authService.me();
-    setUser(me.user);
-    void data;
+    await authService.login(credentials);
+    await refreshUser();
   }
 
   async function logout() {
@@ -52,7 +53,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        isLoading,
+        login,
+        logout,
+        refreshUser, 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

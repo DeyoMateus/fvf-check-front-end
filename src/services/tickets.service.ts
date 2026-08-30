@@ -80,8 +80,8 @@ export interface CreateTicketPayload {
       name: string;
       phone?: string;
     };
-    productName?: string; // <--- Adicione esta linha
-    batchNumber?: string; // <--- Adicione esta linha
+    productName?: string;
+    batchNumber?: string;
   };
   parts: Array<{
     partCode: string;
@@ -156,6 +156,7 @@ export interface Ticket {
 
   createdAt?: string;
   updatedAt?: string;
+  dueDate?: string; // 👈 Campo adicionado para resolver o erro do TypeScript
   slaHours?: number;
   assignedUser?: string;
 }
@@ -225,6 +226,7 @@ export const ticketsService = {
         scores: item.scores,
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
+        dueDate: item.dueDate,
         slaHours: item.slaHours ?? 24,
         assignedUser: item.assignedTo?.name,
       }));
@@ -242,7 +244,6 @@ export const ticketsService = {
         "/tickets",
         data,
       );
-      // Lê corretamente a propriedade 'ticket' retornada pela API do backend
       const item = response.data.ticket || response.data;
       return {
         id: item.id,
@@ -256,6 +257,8 @@ export const ticketsService = {
         mediaFiles: item.mediaFiles,
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
+        dueDate: item.dueDate,
+        slaHours: item.slaHours ?? 24,
       } as Ticket;
     } catch (error) {
       console.warn(
@@ -330,5 +333,9 @@ export const ticketsService = {
     } catch {
       return URL.createObjectURL(file);
     }
+  },
+
+  async delete(id: string): Promise<void> {
+    await api.delete(`/tickets/${id}`);
   },
 };

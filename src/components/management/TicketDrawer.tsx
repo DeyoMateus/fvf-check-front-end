@@ -1,37 +1,39 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { X, MessageSquare, Paperclip, Camera, Truck, Factory, Wrench, CheckCircle2, ChevronDown } from "lucide-react";
-import type { Ticket, TicketPart } from "../../lib/types";
+import type { Ticket, TicketPart, TicketStatus } from "../../lib/types";
 import { TriageScoreMeter } from "../domain/TriageScoreMeter";
 import { SeverityBadge } from "../domain/SeverityBadge";
 import { SlaIndicator } from "../domain/SlaIndicator";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 
-interface TicketDrawerProps {
+
+export interface TicketDrawerProps {
   ticket: Ticket | null;
   onClose: () => void;
-  onStatusChange?: (ticketId: string, newStatus: string) => Promise<void> | void;
+  onStatusChange?: (ticketId: string, newStatus: TicketStatus) => Promise<void> | void;
   onAddComment?: (ticketId: string, comment: string) => Promise<void> | void;
   onTriggerAction?: (actionType: string, ticketId: string) => void;
   onViewEvidence?: (part: TicketPart) => void;
 }
 
-const AVAILABLE_STATUSES = [
+const AVAILABLE_STATUSES: { value: TicketStatus; label: string }[] = [
   { value: "OPEN", label: "Aberto" },
   { value: "UNDER_REVIEW", label: "Em Análise" },
   { value: "APPROVED", label: "Aprovado" },
   { value: "REJECTED", label: "Rejeitado" },
   { value: "COMPLETED", label: "Concluído" },
+  { value: "CANCELLED", label: "Cancelado" },
 ];
 
 function extractPartDetails(part: TicketPart) {
   const raw = part as unknown as Record<string, unknown>;
 
-  const partCode = 
-    String(raw.partCode || raw.code || raw.sku || "Sem código");
+  const partCode = String(raw.partCode || raw.code || raw.sku || "Sem código");
   
-  const partName =
-    String(raw.partName || raw.descricao || raw.name || raw.title || `Peça (${partCode})`);
+  const partName = String(
+    raw.partName || raw.descricao || raw.name || raw.title || `Peça (${partCode})`
+  );
 
   const score =
     typeof raw.score === "number"
@@ -54,8 +56,7 @@ function extractPartDetails(part: TicketPart) {
     ? mediaList.length 
     : Number(raw.evidenceCount || raw.evidencia || 0);
 
-  const defectType = 
-    String(raw.defectType || raw.defeito || raw.type || "Geral");
+  const defectType = String(raw.defectType || raw.defeito || raw.type || "Geral");
 
   return {
     partCode,
@@ -77,9 +78,17 @@ export function TicketDrawer({
 }: TicketDrawerProps) {
   const [isCommenting, setIsCommenting] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
-  const [selectedNewStatus, setSelectedNewStatus] = useState<string>("UNDER_REVIEW");
+  const [selectedNewStatus, setSelectedNewStatus] = useState<TicketStatus>(
+  ticket?.status || "UNDER_REVIEW" );
   const [commentText, setCommentText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Adicione este efeito para manter o select sincronizado com a prop ticket:
+useEffect(() => {
+  if (ticket?.status) {
+    setSelectedNewStatus(ticket.status);
+  }
+}, [ticket?.status]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -98,21 +107,21 @@ export function TicketDrawer({
   const displayBatch = ticket.batchNumber ? `Lote ${ticket.batchNumber}` : "Sem lote";
   const partsList = ticket.parts ?? [];
 
-  // Dispara a rota de alteração de status conectada com a API
-  const handleConfirmStatusChange = async () => {
-    if (!onStatusChange) return;
+ const handleConfirmStatusChange = async () => {
+  if (!onStatusChange || !ticket) return;
 
-    setIsSubmitting(true);
-    try {
-      await onStatusChange(ticket.id, selectedNewStatus);
-      setIsChangingStatus(false);
-      onClose();
-    } catch (error) {
-      console.error("Erro ao atualizar status do ticket:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  setIsSubmitting(true);
+  try {
+    await onStatusChange(ticket.id, selectedNewStatus);
+    setIsChangingStatus(false);
+    // Mantenha onClose() se quiser fechar a modal ao alterar, 
+    // ou remova onClose() para deixá-la aberta mostrando o status atualizado em tempo real.
+  } catch (error) {
+    console.error("Erro ao atualizar status do ticket:", error);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const handleSaveComment = async () => {
     if (!commentText.trim()) return;
@@ -189,7 +198,7 @@ export function TicketDrawer({
               <div className="space-y-3">
                 <select
                   value={selectedNewStatus}
-                  onChange={(e) => setSelectedNewStatus(e.target.value)}
+                  onChange={(e) => setSelectedNewStatus(e.target.value as TicketStatus)}
                   className="w-full rounded-lg border border-steel-700 bg-abyss-950 p-2 text-xs text-steel-100 focus:border-gold-400 focus:outline-none cursor-pointer"
                 >
                   {AVAILABLE_STATUSES.map((st) => (
