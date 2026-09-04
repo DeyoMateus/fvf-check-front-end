@@ -1,4 +1,8 @@
 import { useState, useRef, useEffect } from "react";
+import { toast } from "sonner";
+import { useAuth } from "../../contexts/AuthContext";
+import { runSync } from "../../lib/offline/sync-engine";
+import { enqueueTicket, enqueueMedia } from "../../lib/offline/outbox";
 import {
   X,
   QrCode,
@@ -22,9 +26,11 @@ import {
   Package,
   UserCheck,
   FileSpreadsheet,
+  BookOpen,
 } from "lucide-react";
 import { BrowserMultiFormatReader } from "@zxing/library";
 import { ticketsService, CreateTicketPayload } from "../../services/tickets.service";
+import { cn } from "@/utils/cn";
 
 interface CreateTicketModalProps {
   isOpen: boolean;
@@ -36,7 +42,7 @@ type Step = 1 | 2 | 3;
 
 interface EvidencePhoto {
   id: string;
-  type: "GERAL" | "AVARIA" | "MANUAL_ETIQUETA";
+  type: "GERAL" | "AVARIA" | "MANUAL_ETIQUETA" | "MANUAL_PAGINA";
   file: File;
   previewUrl: string;
   timestamp: string;
@@ -59,7 +65,7 @@ const PECA_CATALOG_MOCK = [
   { code: "P-103", name: "Tampo Superior 1800x450x15mm" },
   { code: "P-104", name: "Base Inferior 1800x450x15mm" },
   { code: "P-201", name: "Frente de Gaveta Mel 600x200mm" },
-  { code: "K-001", name: "Kit Ferragem Completo (Minifix + Cavilhas)" },
+  { code: "K-001", name: "Kit Ferragem Completo (Minifix Cavilhas)" },
 ];
 
 async function captureGeolocation(): Promise<{ latitude?: number; longitude?: number }> {
@@ -86,6 +92,7 @@ export function CreateTicketModal({
   onClose,
   onSuccess,
 }: CreateTicketModalProps) {
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFallbackMode, setIsFallbackMode] = useState(false);
@@ -168,7 +175,12 @@ export function CreateTicketModal({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(stream);
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/mp4";
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -176,7 +188,7 @@ export function CreateTicketModal({
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         const url = URL.createObjectURL(blob);
         setAudioBlob(blob);
         setAudioUrl(url);
@@ -213,8 +225,6 @@ export function CreateTicketModal({
       stopRecording();
     };
   }, []);
-
-  if (!isOpen) return null;
 
   const startNfeScanner = async () => {
     setErrorMessage(null);
@@ -371,6 +381,19 @@ export function CreateTicketModal({
       setErrorMessage("Por favor, selecione a Responsabilidade Provável.");
       return false;
     }
+
+    if (isFallbackMode) {
+      const hasLabel = photos.some((p) => p.type === "MANUAL_ETIQUETA");
+      const hasDefect = photos.some((p) => p.type === "AVARIA");
+      const hasManualPage = photos.some((p) => p.type === "MANUAL_PAGINA");
+      if (!hasLabel || !hasDefect || !hasManualPage) {
+        setErrorMessage(
+          "Modo de Emergência ativo: é obrigatório anexar as 3 fotos (Etiqueta, Avaria e Manual) antes de continuar.",
+        );
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -382,6 +405,72 @@ export function CreateTicketModal({
       if (validateStep2()) setStep(3);
     }
   };
+
+  const handleReset = () => {
+    stopAllMedia();
+    removeAudio();
+    setStep(1);
+    setChaveNfe("");
+    setClienteNome("");
+    setClienteTelefone("");
+    setProdutoNome("");
+    setLoteFabricacao("");
+    setTipoAvaria("");
+    setPackageCondition("");
+    setResponsabilidadeEstimada("");
+    setDescricaoDefeito("");
+    setPhotos([]);
+    setAddedParts([]);
+    setSelectedPartCode("");
+    setCodigoPecaManual("");
+    setDescricaoPeca("");
+    setQuantidadePeca(1);
+    setIsFallbackMode(false);
+    setErrorMessage(null);
+    setIsFullscreen(false);
+    onClose();
+  };
+
+  function mapMediaTypeForOffline(
+    type: EvidencePhoto["type"],
+  ): "LABEL" | "DEFECT" | "AMBIENT" | "MANUAL_PAGE" {
+    switch (type) {
+      case "MANUAL_ETIQUETA":
+        return "LABEL";
+      case "AVARIA":
+        return "DEFECT";
+      case "MANUAL_PAGINA":
+        return "MANUAL_PAGE";
+      default:
+        return "AMBIENT";
+    }
+  }
+
+  async function queueTicketOffline(payload: CreateTicketPayload) {
+    if (!user?.id) {
+      throw new Error(
+        "Não foi possível identificar o usuário logado para salvar o chamado offline.",
+      );
+    }
+
+    const ticketRecord = await enqueueTicket(user.id, payload);
+
+    for (const photo of photos) {
+      await enqueueMedia(user.id, ticketRecord.localId, photo.file, mapMediaTypeForOffline(photo.type), {
+        capturedAt: photo.timestamp || new Date().toISOString(),
+        latitude: photo.latitude,
+        longitude: photo.longitude,
+      });
+    }
+
+    if (audioBlob) {
+      await enqueueMedia(user.id, ticketRecord.localId, audioBlob, "AUDIO", {
+        capturedAt: new Date().toISOString(),
+      });
+    }
+
+    return ticketRecord;
+  }
 
   const handleSubmit = async () => {
     setErrorMessage(null);
@@ -411,48 +500,13 @@ export function CreateTicketModal({
     try {
       setIsSubmitting(true);
 
-      const mapDefectType = (type: string) => {
+      const mapDefectType = (type: string): "BROKEN" | "MISSING" | "HARDWARE_FAULT" => {
         switch (type) {
           case "PECA_QUEBRADA": return "BROKEN";
           case "FALTOU_PECA": return "MISSING";
-          case "FERRAGEM_DEFEITUOSA":
-          case "EMBALAGEM_AVARIADA":
           default: return "HARDWARE_FAULT";
         }
       };
-
-      const mapMediaType = (type: EvidencePhoto["type"]): "LABEL" | "DEFECT" | "AMBIENT" | "AUDIO" => {
-        switch (type) {
-          case "MANUAL_ETIQUETA": return "LABEL";
-          case "AVARIA": return "DEFECT";
-          default: return "AMBIENT";
-        }
-      };
-
-      const uploadedMediaFiles: NonNullable<CreateTicketPayload["mediaFiles"]> = await Promise.all(
-        photos.map(async (photo) => {
-          const url = await ticketsService.uploadFileToR2(photo.file);
-          return {
-            url,
-            type: mapMediaType(photo.type),
-            latitude: photo.latitude,
-            longitude: photo.longitude,
-            capturedAt: new Date().toISOString(), // Formato ISO exigido pelo backend
-          };
-        })
-      );
-
-      if (audioBlob) {
-        const audioFile = new File([audioBlob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
-        const audioMediaUrl = await ticketsService.uploadFileToR2(audioFile);
-        uploadedMediaFiles.push({
-          url: audioMediaUrl,
-          type: "AUDIO",
-          latitude: undefined,
-          longitude: undefined,
-          capturedAt: new Date().toISOString(),
-        });
-      }
 
       const payload: CreateTicketPayload = {
         isEmergencyMode: isFallbackMode,
@@ -476,53 +530,103 @@ export function CreateTicketModal({
           defectType: mapDefectType(item.defectType),
           emergencyNotes: item.emergencyNotes,
         })),
-        mediaFiles: uploadedMediaFiles.length > 0 ? uploadedMediaFiles : undefined,
       };
 
-      await ticketsService.create(payload);
-      onSuccess();
-      handleReset();
-    } catch (err: any) {
-      const backendError =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        "Falha na validação do chamado. Verifique os campos obrigatórios.";
-      setErrorMessage(backendError);
+      if (!navigator.onLine) {
+        await queueTicketOffline(payload);
+        void runSync();
+
+        toast.info("Sem conexão — chamado salvo no aparelho.", {
+          description: "Ele será enviado automaticamente quando a internet voltar.",
+        });
+        onSuccess();
+        handleReset();
+        return;
+      }
+
+      try {
+        const createdTicket = await ticketsService.create(payload);
+
+        for (const photo of photos) {
+          const uploaded = await ticketsService.uploadFileToR2(photo.file, createdTicket.id!);
+          if (uploaded) {
+            await ticketsService
+              .confirmMedia({
+                ticketId: createdTicket.id!,
+                objectKey: uploaded.objectKey,
+                mediaType: mapMediaTypeForOffline(photo.type),
+                capturedAt: photo.timestamp || new Date().toISOString(),
+                latitude: photo.latitude,
+                longitude: photo.longitude,
+              })
+              .catch((err) => console.warn("⚠️ Falha ao confirmar mídia:", err));
+          }
+        }
+
+        if (audioBlob) {
+          const audioFile = new File([audioBlob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
+          const uploaded = await ticketsService.uploadFileToR2(audioFile, createdTicket.id!);
+          if (uploaded) {
+            await ticketsService
+              .confirmMedia({
+                ticketId: createdTicket.id!,
+                objectKey: uploaded.objectKey,
+                mediaType: "AUDIO",
+                capturedAt: new Date().toISOString(),
+              })
+              .catch((err) => console.warn("⚠️ Falha ao confirmar áudio:", err));
+          }
+        }
+
+        toast.success("Chamado enviado com sucesso!");
+        onSuccess();
+        handleReset();
+      } catch (err: any) {
+        const isNetworkFailure = !err?.response;
+
+        if (isNetworkFailure) {
+          await queueTicketOffline(payload);
+          void runSync();
+          toast.info("Falha de conexão — chamado salvo no aparelho.", {
+            description: "Ele será enviado automaticamente quando a internet voltar.",
+          });
+          onSuccess();
+          handleReset();
+          return;
+        }
+
+        console.error("❌ Erro ao submeter chamado:", err);
+        const details = err.response?.data?.details;
+        let backendError =
+          err.response?.data?.message || err.response?.data?.error || "Falha na validação do chamado.";
+
+        if (details && typeof details === "object") {
+          const formattedDetails = Object.entries(details)
+            .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(", ") : val}`)
+            .join(" | ");
+          backendError = `Erro de validação: ${formattedDetails}`;
+        }
+
+        setErrorMessage(backendError);
+      }
+    } catch (err) {
+      console.error("❌ Erro ao salvar chamado offline:", err);
+      setErrorMessage(
+        "Não foi possível salvar o chamado no aparelho. Tente novamente.",
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleReset = () => {
-    stopAllMedia();
-    removeAudio();
-    setStep(1);
-    setChaveNfe("");
-    setClienteNome("");
-    setClienteTelefone("");
-    setProdutoNome("");
-    setLoteFabricacao("");
-    setTipoAvaria("");
-    setPackageCondition("");
-    setResponsabilidadeEstimada("");
-    setDescricaoDefeito("");
-    setPhotos([]);
-    setAddedParts([]);
-    setSelectedPartCode("");
-    setCodigoPecaManual("");
-    setDescricaoPeca("");
-    setQuantidadePeca(1);
-    setIsFallbackMode(false);
-    setErrorMessage(null);
-    setIsFullscreen(false);
-    onClose();
-  };
+  if (!isOpen) return null;
 
   const getPhotoTypeLabel = (type: EvidencePhoto["type"]) => {
     switch (type) {
       case "GERAL": return "Visão Geral";
       case "AVARIA": return "Avaria";
       case "MANUAL_ETIQUETA": return "Etiqueta";
+      case "MANUAL_PAGINA": return "Manual";
     }
   };
 
@@ -780,7 +884,6 @@ export function CreateTicketModal({
                     <option value="PECA_QUEBRADA">Peça Quebrada</option>
                     <option value="FALTOU_PECA">Faltou Peça</option>
                     <option value="FERRAGEM_DEFEITUOSA">Ferragem Defeituosa</option>
-                    <option value="EMBALAGEM_AVARIADA">Embalagem Avariada</option>
                   </select>
                 </div>
 
@@ -820,11 +923,14 @@ export function CreateTicketModal({
                 <label className="block text-xs font-semibold text-slate-400 mb-1">
                   Fotos de Evidência
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className={cn("grid gap-2", isFallbackMode ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
                   {[
                     { type: "GERAL" as const, label: "Visão Geral", Icon: Camera },
                     { type: "AVARIA" as const, label: "Avaria", Icon: ShieldAlert },
                     { type: "MANUAL_ETIQUETA" as const, label: "Etiqueta", Icon: FileText },
+                    ...(isFallbackMode
+                      ? [{ type: "MANUAL_PAGINA" as const, label: "Manual", Icon: BookOpen }]
+                      : []),
                   ].map(({ type, label, Icon }) => {
                     const photo = getPhotoForType(type);
                     return (
@@ -1110,7 +1216,7 @@ export function CreateTicketModal({
                       Embalagem: <span className="text-slate-100">{packageCondition === "DAMAGED" ? "Danificada" : "Intacta"}</span>
                     </p>
                     <p className="text-slate-400 text-[11px]">
-                      Evidências: {photos.length} foto(s) {audioUrl ? "+ Áudio anexado" : ""}
+                      Evidências: {photos.length} foto(s) {audioUrl ? " Áudio anexado" : ""}
                     </p>
                   </div>
                 </div>

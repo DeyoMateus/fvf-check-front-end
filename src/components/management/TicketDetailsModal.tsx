@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { useImageViewer } from "../../contexts/ImageViewerContext";
+import { EmergencyStatusBanner } from "../domain/EmergencyStatusBanner";
+
 import {
   X,
   CheckCircle2,
@@ -56,6 +59,7 @@ export function TicketDetailsModal({
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(ticket);
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const { open: openImageViewer } = useImageViewer();
   const [selectedResponsibility, setSelectedResponsibility] = useState<
     ResponsibilityLabel | undefined
   >(ticket?.suggestedResponsibility);
@@ -111,7 +115,7 @@ export function TicketDetailsModal({
           try {
             setDeleting(true);
             await ticketsService.delete(currentTicket!.id);
-            toast.success("Chamado excluído com sucesso.");
+            toast.success("Chamado movido para lixeira, será excluído em 5 dias.");
             onRefresh();
             onClose();
           } catch (error: any) {
@@ -164,6 +168,11 @@ export function TicketDetailsModal({
 
         {/* Conteúdo */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+          <EmergencyStatusBanner
+            ticketId={currentTicket.id}
+            isEmergencyMode={currentTicket.isEmergencyMode}
+        />
           
           {/* Ações Rápidas de Status (Incluindo OPEN, UNDER_REVIEW, APPROVED, REJECTED) */}
           <div className="rounded-xl border border-steel-700/50 bg-abyss-950/60 p-4">
@@ -367,12 +376,16 @@ export function TicketDetailsModal({
             ) : (
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {currentTicket.mediaFiles.map((m: Media, idx: number) => (
-                  <a
+                  <button
                     key={idx}
-                    href={m.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="group relative aspect-square overflow-hidden rounded-lg border border-steel-700 bg-abyss-900 hover:border-gold-500 transition-all"
+                    type="button"
+                    onClick={() =>
+                      openImageViewer(
+                        (currentTicket.mediaFiles ?? []).map((mf) => ({ url: mf.url, label: mf.type })),
+                        idx,
+                      )
+                    }
+                   className="group relative aspect-square overflow-hidden rounded-lg border border-steel-700 bg-abyss-900 hover:border-gold-500 transition-all"
                   >
                     <img
                       src={m.url}
@@ -382,7 +395,7 @@ export function TicketDetailsModal({
                     <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] font-mono text-white">
                       {m.type}
                     </span>
-                  </a>
+                  </button>
                 ))}
               </div>
             )}

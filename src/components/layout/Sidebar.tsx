@@ -1,17 +1,5 @@
-import {
-  LayoutDashboard,
-  Inbox,
-  Users,
-  Factory,
-  PackageSearch,
-  BarChart3,
-  Settings,
-  LifeBuoy,
-  Anchor,
-  Menu,
-  X,
-  LogOut,
-} from "lucide-react";
+import { LayoutDashboard, Inbox, Users, Factory, PackageSearch, BarChart3, Settings, LifeBuoy, Anchor, Menu, X, LogOut, Trash2 } from "lucide-react";
+
 import { useState } from "react";
 import { cn } from "../../utils/cn";
 import { useAuth } from "../../contexts/AuthContext";
@@ -38,6 +26,8 @@ const FOOT = [
 export function Sidebar({ active, onChange }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout } = useAuth();
+
+  const canSeeTrash = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
 
   function navigate(id: string) {
     onChange(id);
@@ -159,6 +149,22 @@ export function Sidebar({ active, onChange }: SidebarProps) {
               </button>
             );
           })}
+
+          {canSeeTrash && (
+           <button
+             type="button"
+             onClick={() => navigate("lixeira")}
+             className={cn(
+               "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+               active === "lixeira"
+                 ? "bg-gold-500/10 text-gold-200 shadow-[inset_0_0_0_1px_rgba(227,185,33,0.25)]"
+                 : "text-steel-400 hover:bg-abyss-800/60 hover:text-steel-100",
+             )}
+           >
+             <Trash2 className={cn("h-4 w-4", active === "lixeira" && "text-gold-300")} />
+             Lixeira
+           </button>
+         )}
 
           <button
             type="button"

@@ -1,6 +1,11 @@
 /* ============================================================
-   1. ENUMS & TIPOS PRINCIPAIS (Alinhados 100% com o Prisma)
+   FONTE ÚNICA DE TIPOS DE TICKET
+   Espelha os enums do schema.prisma. Qualquer campo novo no
+   backend deve ser adicionado AQUI PRIMEIRO — services/tickets.service.ts
+   apenas re-exporta este arquivo, não deve mais declarar tipos.
    ============================================================ */
+
+/* ---------- ENUMS ---------- */
 
 export type ResponsibilityLabel =
   | "TRANSPORT_DAMAGE"
@@ -21,16 +26,25 @@ export type PkgCondition = "INTACT" | "DAMAGED";
 
 export type DefectType = "BROKEN" | "MISSING" | "HARDWARE_FAULT";
 
+// Alinhado 100% ao enum MediaType do schema.prisma (inclui AUDIO)
 export type MediaType =
   | "AMBIENT"
   | "DEFECT"
   | "MANUAL_PAGE"
   | "LABEL"
-  | "DISCARD_PROOF";
+  | "DISCARD_PROOF"
+  | "AUDIO";
 
-/* ============================================================
-   2. DTOs (Data Transfer Objects)
-   ============================================================ */
+export type VisitStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
+
+export type ClaimStatus = "OPEN" | "UNDER_REVIEW" | "APPROVED" | "DENIED";
+
+export type RmaStatus = "REQUESTED" | "IN_PROGRESS" | "APPROVED" | "DENIED";
+
+// Alinhado ao enum RevLogistics do schema.prisma
+export type ReverseLogisticsStatus = "NONE" | "REQUIRED" | "DISCARDED";
+
+/* ---------- DTOs (payloads de criação) ---------- */
 
 export interface TicketInvoiceDTO {
   number: string;
@@ -61,12 +75,42 @@ export interface CreateTicketDTO {
   parts: TicketPartInputDTO[];
 }
 
-/* ============================================================
-   3. ESTRUTURA DE DADOS & INTERFACES (Entidades do Domínio)
-   ============================================================ */
+// Payload real enviado para POST /tickets (o que o Zod createTicketSchema espera)
+export interface CreateTicketPayload {
+  isEmergencyMode?: boolean;
+  packageCondition: PkgCondition;
+  suggestedResponsibility?: ResponsibilityLabel;
+  invoice: {
+    nfeKey: string;
+    number: string;
+    series: string;
+    issuedAt: string;
+    customer: {
+      name: string;
+      phone?: string;
+    };
+    productName?: string;
+    batchNumber?: string;
+  };
+  parts: Array<{
+    partCode: string;
+    quantity: number;
+    defectType: DefectType;
+    emergencyNotes?: string;
+  }>;
+  mediaFiles?: Array<{
+    url: string;
+    type: MediaType;
+    latitude?: number;
+    longitude?: number;
+    capturedAt: string;
+  }>;
+}
+
+/* ---------- ENTIDADES DE DOMÍNIO ---------- */
 
 export interface Media {
-  id?: string; // Alterado para opcional para alinhar com o serviço
+  id?: string;
   ticketId?: string;
   ticketPartId?: string | null;
   url: string;
@@ -88,6 +132,62 @@ export interface TicketPart {
   media?: Media[];
 }
 
+export interface TechnicalVisit {
+  id: string;
+  ticketId?: string;
+  assemblerId: string;
+  assemblerName?: string;
+  scheduledAt: string;
+  status: VisitStatus;
+  assembler?: {
+    id: string;
+    name: string;
+    email?: string;
+  };
+}
+
+export interface TransportClaim {
+  id: string;
+  ticketId: string;
+  carrierName: string;
+  claimNumber: string;
+  claimedValue?: number | null;
+  status: ClaimStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FactoryRma {
+  id: string;
+  ticketId: string;
+  rmaNumber: string;
+  status: RmaStatus;
+  responseDueAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketEvent {
+  id: string;
+  ticketId: string;
+  type: string;
+  message: string;
+  actorId?: string | null;
+  actor?: {
+    id: string;
+    name: string;
+  } | null;
+  createdAt: string;
+}
+
+export interface CommentItem {
+  id: string;
+  text: string;
+  authorId?: string;
+  authorName?: string;
+  createdAt: string;
+}
+
 export interface Ticket {
   id: string;
   code?: string;
@@ -101,6 +201,9 @@ export interface Ticket {
   suggestedResponsibility?: ResponsibilityLabel;
   packageCondition?: PkgCondition;
   severity?: Severity;
+  isEmergencyMode?: boolean;
+  reverseLogistics?: ReverseLogisticsStatus;
+  reverseLogisticsLabel?: string | null;
 
   // Relações e metadados retornados pelo Backend
   customerName?: string;
@@ -117,6 +220,12 @@ export interface Ticket {
   parts?: TicketPart[];
   mediaFiles?: Media[];
 
+  technicalVisit?: TechnicalVisit | null;
+  transportClaim?: TransportClaim | null;
+  factoryRma?: FactoryRma | null;
+  events?: TicketEvent[];
+  comments?: CommentItem[];
+
   createdAt?: string;
   updatedAt?: string;
   dueDate?: string;
@@ -124,9 +233,7 @@ export interface Ticket {
   assignedUser?: string;
 }
 
-/* ============================================================
-   4. DICIONÁRIOS DE EXIBIÇÃO (UI LABELS)
-   ============================================================ */
+/* ---------- DICIONÁRIOS DE EXIBIÇÃO (UI LABELS) ---------- */
 
 export const RESPONSIBILITY_LABELS: Record<ResponsibilityLabel, string> = {
   TRANSPORT_DAMAGE: "Avaria no Transporte",
@@ -141,6 +248,27 @@ export const STATUS_LABELS: Record<TicketStatus, string> = {
   REJECTED: "Rejeitado",
   COMPLETED: "Resolvido",
   CANCELLED: "Cancelado",
+};
+
+export const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
+  PENDING: "Pendente",
+  CONFIRMED: "Confirmada",
+  COMPLETED: "Concluída",
+  CANCELLED: "Cancelada",
+};
+
+export const CLAIM_STATUS_LABELS: Record<ClaimStatus, string> = {
+  OPEN: "Aberto",
+  UNDER_REVIEW: "Em Análise",
+  APPROVED: "Aprovado",
+  DENIED: "Negado",
+};
+
+export const RMA_STATUS_LABELS: Record<RmaStatus, string> = {
+  REQUESTED: "Solicitado",
+  IN_PROGRESS: "Em Andamento",
+  APPROVED: "Aprovado",
+  DENIED: "Negado",
 };
 
 export const SEVERITY_LABELS: Record<Severity, string> = {

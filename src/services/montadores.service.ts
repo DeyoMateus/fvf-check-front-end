@@ -1,41 +1,55 @@
-import { api } from "../lib/api"; // Ajuste o import do axios conforme o seu projeto
+import { api } from "../lib/api";
 
 export interface Montador {
   id: string;
-  nome: string; // Mapeado de 'name'
+  name: string;
   email: string;
-  telefone: string; // Como o backend retorna email/tenantName, podemos adaptar ou deixar genérico
-  equipe: string; // Mapeado de 'tenantName'
-  status: "DISPONIVEL" | "INATIVO"; // Mapeado do booleano 'active'
-  ticketsHoje: number;
-  ticketsMes: number; // Mapeado de 'ticketsTotal'
-  taxaErro: number;
+  active: boolean;
+  role: "ASSEMBLER";
+  team?: string;
+  ticketsToday: number;
+  ticketsMonth: number;
+  errorRate: number;
   nps: number;
+}
+
+export interface CreateMontadorInput {
+  name: string;
+  email: string;
+  password: string;
+}
+
+// Mapper para garantir consistência entre a resposta da API e a UI
+function mapBackendAssemblerToUI(item: any): Montador {
+  return {
+    id: item.id,
+    name: item.name || item.nome || "Montador",
+    email: item.email || "",
+    active: item.active ?? true,
+    role: "ASSEMBLER",
+    team: item.team || item.equipe || "Geral",
+    ticketsToday: item.ticketsToday ?? item._count?.ticketsToday ?? 0,
+    ticketsMonth: item.ticketsMonth ?? item._count?.ticketsMonth ?? 0,
+    errorRate: item.errorRate ?? 0,
+    nps: item.nps ?? 100,
+  };
 }
 
 export const montadoresService = {
   async getAll(): Promise<Montador[]> {
-    // Rota correta exposta no managementRoutes.ts do backend:
-    const response = await api.get("/users/assemblers");
-
-    // Mapeia os dados vindos do backend para o formato esperado pelo componente frontend
-    return response.data.map((item: any) => ({
-      id: item.id,
-      nome: item.name,
-      email: item.email,
-      telefone: item.email, // Caso não tenha telefone cadastrado no User, exibe o email provisoriamente
-      equipe: item.tenantName,
-      status: item.active ? "DISPONIVEL" : "INATIVO",
-      ticketsHoje: item.ticketsHoje || 0,
-      ticketsMes: item.ticketsTotal || 0,
-      taxaErro: 1.2, // Valor padrão ou vindo da API se houver
-      nps: 98, // Valor padrão ou vindo da API se houver
-    }));
+    try {
+      // Consome a rota do Fastify registrada em routes.ts (/users/assemblers)
+      const response = await api.get<any[]>("/users/assemblers");
+      return response.data.map(mapBackendAssemblerToUI);
+    } catch (error) {
+      console.error("Erro ao buscar montadores do banco de dados:", error);
+      return [];
+    }
   },
 
-  async create(data: { name: string; email: string; password: string }) {
-    // Rota correspondente de cadastro de montador no backend
+  async create(data: CreateMontadorInput): Promise<Montador> {
+    // Consome a rota POST /users/assemblers do Fastify
     const response = await api.post("/users/assemblers", data);
-    return response.data;
+    return mapBackendAssemblerToUI(response.data.assembler || response.data);
   },
 };

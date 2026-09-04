@@ -1,4 +1,8 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { ImageViewerProvider } from "./contexts/ImageViewerContext";
+import { MeusChamadosView } from "./components/assembler/MeusChamadosView";
+import { IosInstallBanner } from "./components/pwa/IosInstallBanner";
+import { LixeiraPage } from "./components/pages/LixeiraPage";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -29,11 +33,11 @@ import { PecasLotesPage } from "./components/pages/PecasLotesPage";
 import { MontadoresPage } from "./components/pages/MontadoresPage";
 import { RelatoriosPage } from "./components/pages/RelatoriosPage";
 import { ConfiguracoesPage } from "./components/pages/ConfiguracoesPage";
-import type { Ticket } from "./services/tickets.service";
+import { Ticket, TicketStatus } from "./lib/types";
 import { cn } from "./utils/cn";
 import { TicketsPage } from "./components/pages/TicketsPage";
 import { toast } from 'sonner';
-import { TicketStatus } from "./lib/types";
+
 
 type Mode = "painel" | "pwa";
 type PageId =
@@ -45,13 +49,15 @@ type PageId =
   | "relatorios"
   | "suporte"
   | "config"
-  | "tickets";
+  | "tickets"
+  | "lixeira";
 
 /* ========== COMPONENTE DE GUARD DE AUTENTICAÇÃO ========== */
 
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
-  const [mode, setMode] = useState<Mode>("painel");
+  const buildTarget = import.meta.env.MODE === "pwa" ? "pwa" : "painel";
+  const [mode, setMode] = useState<Mode>(buildTarget);
 
   if (isLoading) {
     return (
@@ -69,7 +75,13 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-abyss-950 text-steel-100">
-      <ModeSwitcher mode={mode} onChange={setMode} />
+      
+       {/* O seletor manual só aparece em ambiente de desenvolvimento
+          (npm run dev, sem --mode pwa) — útil pra visualizar as duas
+          telas durante o trabalho de design, mas nunca em produção,
+          onde cada build já sabe qual experiência mostrar. */}
+      {import.meta.env.DEV && <ModeSwitcher mode={mode} onChange={setMode} />}
+
       {mode === "painel" ? <PainelGestao /> : <PwaPreview />}
     </div>
   );
@@ -79,9 +91,11 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ImageViewerProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ImageViewerProvider>
   );
 }
 
@@ -117,10 +131,22 @@ function ModeSwitcher({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => v
 function PainelGestao() {
   const [active, setActive] = useState<PageId>("kanban");
   const [selected, setSelected] = useState<Ticket | null>(null);
-  
+  const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+    const visibleTickets = useMemo(() => {
+    if (!searchQuery.trim()) return tickets;
+    const q = searchQuery.trim().toLowerCase();
+    return tickets.filter(
+      (t) =>
+        t.code?.toLowerCase().includes(q) ||
+        t.customerName?.toLowerCase().includes(q) ||
+        t.nfeKey?.toLowerCase().includes(q) ||
+        t.id.toLowerCase().includes(q),
+    );
+  }, [tickets, searchQuery]);
 
   useEffect(() => {
     if (selected) {
@@ -189,7 +215,18 @@ function PainelGestao() {
       <Sidebar active={active} onChange={(id) => setActive(id as PageId)} />
       
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onNewTicket={() => setIsCreateModalOpen(true)} />
+        <Topbar
+         onNewTicket={() => setIsCreateModalOpen(true)}
+         onSearch={setSearchQuery}
+         onScanDanfe={(scannedValue) => {
+           setSearchQuery(scannedValue);
+           // Garante que o resultado do scan seja visível mesmo se o
+           // usuário estava numa página que não lista tickets (ex: Fábricas)
+           if (active !== "kanban" && active !== "tabela" && active !== "tickets") {
+             setActive("kanban");
+           }
+         }}
+       />
 
         <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-24">
           {active === "kanban" && (
@@ -197,7 +234,7 @@ function PainelGestao() {
               view="kanban"
               onViewChange={(v) => setActive(v)}
               onTicketClick={setSelected}
-              tickets={tickets}
+              tickets={visibleTickets}
               isLoading={isLoading}
               onStatusChange={handleStatusChange}
             />
@@ -207,7 +244,7 @@ function PainelGestao() {
               view="tabela"
               onViewChange={(v) => setActive(v)}
               onTicketClick={setSelected}
-              tickets={tickets}
+              tickets={visibleTickets}
               isLoading={isLoading}
               onStatusChange={handleStatusChange}
             />
@@ -217,7 +254,8 @@ function PainelGestao() {
           {active === "montadores" && <MontadoresPage />}
           {active === "relatorios" && <RelatoriosPage />}
           {active === "config" && <ConfiguracoesPage />}
-          {active === "tickets" && <TicketsPage />}
+           {active === "tickets" && <TicketsPage externalQuery={searchQuery} />}
+          {active === "lixeira" && <LixeiraPage />}
         </main>
       </div>
 
@@ -235,8 +273,8 @@ function PainelGestao() {
             await ticketsService.updateResponsibility(ticketId, "TRANSPORT_DAMAGE");
           } else if (actionType === "FACTORY_RMA") {
             await ticketsService.updateResponsibility(ticketId, "FACTORY_DEFECT");
-          } else if (actionType === "TECH_VISIT") {
-            await ticketsService.updateResponsibility(ticketId, "ASSEMBLY_ERROR");
+          } else if (actionType === "TECH_VISIT_SCHEDULED") {
+            
           }
           loadTickets();
         }}
@@ -391,7 +429,7 @@ function TriagemPage({
             color="#ef4444"
           />
           <RespBar
-            label="Erro de Produção"
+            label="Erro de Montagem"
             icon={<Wrench className="h-4 w-4" />}
             value={porResp.montagem}
             total={total}
@@ -482,8 +520,12 @@ function RespBar({
 /* ========== PWA PREVIEW (FRAME DE CELULAR) ========== */
 
 function PwaPreview() {
+
+  const [tab, setTab] = useState<"novo" | "meus">("novo");
+
   return (
     <div className="flex min-h-screen items-start justify-center bg-[radial-gradient(circle_at_50%_0%,rgba(227,185,33,0.08),transparent_60%)] px-4 py-8 pb-28">
+      <IosInstallBanner />
       <div className="w-full max-w-md">
         <div className="mb-4 text-center">
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-gold-400 hud-line">
@@ -497,6 +539,27 @@ function PwaPreview() {
           </p>
         </div>
 
+         <div className="mx-auto mb-3 flex max-w-[400px] rounded-lg border border-steel-700/60 bg-abyss-900/60 p-1">
+        <button
+          onClick={() => setTab("novo")}
+          className={cn(
+            "flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors",
+            tab === "novo" ? "bg-gold-500/15 text-gold-200" : "text-steel-400",
+          )}
+        >
+          Novo Chamado
+        </button>
+        <button
+          onClick={() => setTab("meus")}
+          className={cn(
+            "flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors",
+            tab === "meus" ? "bg-gold-500/15 text-gold-200" : "text-steel-400",
+          )}
+        >
+          Meus Chamados
+        </button>
+      </div>
+
         <div
           className={cn(
             "relative mx-auto w-full max-w-[400px] overflow-hidden rounded-[2.5rem] border-[10px] border-abyss-900",
@@ -505,7 +568,7 @@ function PwaPreview() {
         >
           <div className="absolute left-1/2 top-2 z-30 h-5 w-32 -translate-x-1/2 rounded-b-2xl bg-abyss-900" />
           <div className="relative h-[760px] overflow-y-auto bg-abyss-950">
-            <AssemblerScannerView />
+            {tab === "novo" ? <AssemblerScannerView /> : <MeusChamadosView />}
           </div>
         </div>
       </div>

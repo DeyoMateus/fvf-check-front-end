@@ -3,13 +3,15 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
-  Calendar,
+  Calendar as CalendarIcon,
   Download,
   Factory,
   FileSpreadsheet,
   Truck,
   Wrench,
   Loader2,
+  X,
+  Check,
 } from "lucide-react";
 import { PageHeader } from "../ui/PageHeader";
 import { Badge } from "../ui/Badge";
@@ -23,7 +25,12 @@ import {
 } from "../../services/reports.service";
 
 export function RelatoriosPage() {
-  const [periodo, setPeriodo] = useState<Periodo>("30d");
+  const [periodo, setPeriodo] = useState<Periodo | "custom">("30d");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
+  const [appliedCustomLabel, setAppliedCustomLabel] = useState<string>("");
+  const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [exportingPdf, setExportingPdf] = useState<boolean>(false);
   const [exportingCsv, setExportingCsv] = useState<boolean>(false);
@@ -32,18 +39,24 @@ export function RelatoriosPage() {
   useEffect(() => {
     async function loadAnalytics() {
       try {
-        setLoading(true);
-        const result = await reportsService.getAnalytics(periodo);
-        setData(result);
-      } catch (error) {
-        console.error("Falha na requisição de analytics:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
+      setLoading(true);
 
-    loadAnalytics();
-  }, [periodo]);
+      const result = await reportsService.getAnalytics(
+        periodo,
+        customStartDate,
+        customEndDate
+      );
+
+      setData(result);
+    } catch (error) {
+      console.error("Falha na requisição de analytics:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  loadAnalytics();
+}, [periodo, customStartDate, customEndDate]);
 
   async function handleDownloadFile(
     endpoint: string,
@@ -69,6 +82,31 @@ export function RelatoriosPage() {
     }
   }
 
+  function handleApplyCustomPeriod() {
+    if (!customStartDate || !customEndDate) {
+      alert("Por favor, selecione as datas de início e fim.");
+      return;
+    }
+
+    if (new Date(customStartDate) > new Date(customEndDate)) {
+      alert("A data inicial não pode ser maior que a data final.");
+      return;
+    }
+
+    const startFormatted = new Date(customStartDate).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+    });
+    const endFormatted = new Date(customEndDate).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+    });
+
+    setAppliedCustomLabel(`${startFormatted} a ${endFormatted}`);
+    setPeriodo("custom");
+    setIsCalendarOpen(false);
+  }
+
   const maxBar = data?.distribuicao
     ? Math.max(
         ...data.distribuicao.flatMap((m) => [
@@ -80,7 +118,7 @@ export function RelatoriosPage() {
       )
     : 1;
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="flex h-96 w-full flex-col items-center justify-center gap-3 text-steel-400">
         <Loader2 className="h-8 w-8 animate-spin text-gold-400" />
@@ -100,10 +138,13 @@ export function RelatoriosPage() {
         }
         description="Indicadores de triagem, distribuição de responsabilidade, top defeitos e performance de fábrica e montagem."
         actions={
-          <>
+          <div className="flex flex-wrap items-center gap-2">
             <Tabs<Periodo>
-              value={periodo}
-              onChange={setPeriodo}
+              value={periodo === "custom" ? ("30d" as Periodo) : (periodo as Periodo)}
+              onChange={(val) => {
+                setPeriodo(val);
+                setAppliedCustomLabel("");
+              }}
               options={[
                 { value: "7d", label: "7d" },
                 { value: "30d", label: "30d" },
@@ -111,14 +152,130 @@ export function RelatoriosPage() {
                 { value: "12m", label: "12m" },
               ]}
             />
-            <Button variant="secondary">
-              <Calendar className="h-4 w-4" />
-              Período custom
-            </Button>
+
+            <div className="relative">
+              <Button
+                variant={periodo === "custom" ? "primary" : "secondary"}
+                onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+                className={cn(
+                  periodo === "custom" && "border-gold-500/50 bg-gold-500/20 text-gold-300"
+                )}
+              >
+                <CalendarIcon className="h-4 w-4" />
+                {periodo === "custom" && appliedCustomLabel
+                  ? appliedCustomLabel
+                  : "Período custom"}
+              </Button>
+
+              {/* Modal / Popover de Seleção de Período Customizado */}
+              {isCalendarOpen && (
+                <div className="absolute right-0 top-12 z-50 w-80 rounded-xl border border-steel-700/80 bg-abyss-900 p-4 shadow-2xl backdrop-blur-md glow-gold animate-in fade-in zoom-in-95">
+                  <div className="flex items-center justify-between border-b border-steel-700/50 pb-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-gold-400">
+                      Selecionar Período
+                    </span>
+                    <button
+                      onClick={() => setIsCalendarOpen(false)}
+                      className="rounded-lg p-1 text-steel-400 hover:bg-abyss-800 hover:text-steel-100"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold uppercase text-steel-300 mb-1">
+                        Data Inicial
+                      </label>
+                      <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        className="w-full rounded-lg border border-steel-700 bg-abyss-950 px-3 py-2 text-xs text-steel-100 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold uppercase text-steel-300 mb-1">
+                        Data Final
+                      </label>
+                      <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        className="w-full rounded-lg border border-steel-700 bg-abyss-950 px-3 py-2 text-xs text-steel-100 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500"
+                      />
+                    </div>
+
+                    {/* Atalhos rápidos */}
+                    <div className="pt-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-steel-500 mb-1.5">
+                        Atalhos Rápidos
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const now = new Date();
+                            const start = new Date(now.getFullYear(), now.getMonth(), 1);
+                            setCustomStartDate(start.toISOString().split("T")[0]);
+                            setCustomEndDate(now.toISOString().split("T")[0]);
+                          }}
+                          className="rounded-md border border-steel-700/60 bg-abyss-950 px-2 py-1 text-[10px] font-medium text-steel-300 hover:border-gold-500/40 hover:text-gold-300"
+                        >
+                          Este Mês
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const now = new Date();
+                            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                            const end = new Date(now.getFullYear(), now.getMonth(), 0);
+                            setCustomStartDate(start.toISOString().split("T")[0]);
+                            setCustomEndDate(end.toISOString().split("T")[0]);
+                          }}
+                          className="rounded-md border border-steel-700/60 bg-abyss-950 px-2 py-1 text-[10px] font-medium text-steel-300 hover:border-gold-500/40 hover:text-gold-300"
+                        >
+                          Mês Anterior
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const end = new Date();
+                            const start = new Date();
+                            start.setDate(end.getDate() - 15);
+                            setCustomStartDate(start.toISOString().split("T")[0]);
+                            setCustomEndDate(end.toISOString().split("T")[0]);
+                          }}
+                          className="rounded-md border border-steel-700/60 bg-abyss-950 px-2 py-1 text-[10px] font-medium text-steel-300 hover:border-gold-500/40 hover:text-gold-300"
+                        >
+                          Últimos 15d
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-3 border-t border-steel-700/50">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsCalendarOpen(false)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button size="sm" onClick={handleApplyCustomPeriod}>
+                        <Check className="h-3.5 w-3.5" />
+                        Aplicar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <Button
               onClick={() =>
                 handleDownloadFile(
-                  `/analyst/export/pdf?periodo=${periodo}`,
+                  `/analyst/export/pdf?periodo=${periodo}&startDate=${customStartDate}&endDate=${customEndDate}`,
                   `relatorio-executivo-${periodo}.pdf`,
                   setExportingPdf
                 )
@@ -132,7 +289,7 @@ export function RelatoriosPage() {
               )}
               {exportingPdf ? "Gerando PDF..." : "Exportar PDF"}
             </Button>
-          </>
+          </div>
         }
       />
 
@@ -275,30 +432,35 @@ export function RelatoriosPage() {
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <InsightCard
           icon={<BarChart3 className="h-5 w-5" />}
-          title="SLA de triagem"
-          body="Tempo médio otimizado com a automação de scores do ecossistema."
+          title={`SLA de Triagem: ${data?.insights?.slaMedioHoras ?? 0}h`}
+          body="Tempo médio do momento da abertura do chamado até o encerramento da avaliação da equipe técnica."
         />
         <InsightCard
           icon={<Factory className="h-5 w-5" />}
           title="Atenção: Processos Produtivos"
-          body="Monitore a incidência de falhas recorrentes agrupadas no filtro do período atual."
+          body={data?.insights?.alertaProducao || "Carregando análises do período..."}
         />
         <InsightCard
           icon={<FileSpreadsheet className="h-5 w-5" />}
           title="Exportações disponíveis"
-          body="CSV de tickets, PDF executivo mensal e pacotes compatíveis com SAP/TOTVS."
+          body="Baixe a planilha bruta detalhada (CSV) com todos os chamados e ocorrências do período ativo."
           action={
             <Button
               variant="outline"
               size="sm"
               className="mt-3"
-              onClick={() =>
+              onClick={() => {
+                const params = new URLSearchParams({ periodo });
+                if (periodo === "custom") {
+                  if (customStartDate) params.append("startDate", customStartDate);
+                  if (customEndDate) params.append("endDate", customEndDate);
+                }
                 handleDownloadFile(
-                  `/analyst/export/csv?periodo=${periodo}`,
-                  `pacote-rma-${periodo}.csv`,
+                  `/analyst/export/csv?${params.toString()}`,
+                  `relatorio-chamados-${periodo}.csv`,
                   setExportingCsv
-                )
-              }
+                );
+              }}
               disabled={exportingCsv}
             >
               {exportingCsv ? (

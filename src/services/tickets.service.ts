@@ -1,286 +1,165 @@
 import { api } from "../lib/api";
-import { TICKETS_MOCK } from "../lib/mockData";
+import { EMERGENCY_MEDIA_LABELS } from "../services/emergency.service";
+import type {
+  RequiredEmergencyMediaType,
+  EmergencyStatusResponse,
+} from "../services/emergency.service";
+import type {
+  ResponsibilityLabel,
+  TicketStatus,
+  Severity,
+  PkgCondition,
+  DefectType,
+  MediaType,
+  VisitStatus,
+  ClaimStatus,
+  RmaStatus,
+  Media,
+  TicketPart,
+  TechnicalVisit,
+  TransportClaim,
+  FactoryRma,
+  TicketEvent,
+  CommentItem,
+  Ticket,
+  CreateTicketPayload,
+  ReverseLogisticsStatus,
+} from "../lib/types";
+import {
+  RESPONSIBILITY_LABELS,
+  STATUS_LABELS,
+  VISIT_STATUS_LABELS,
+  CLAIM_STATUS_LABELS,
+  RMA_STATUS_LABELS,
+  SEVERITY_LABELS,
+  STATUS_ORDER,
+} from "../lib/types";
 
-/* ============================================================
-   1. ENUMS & TIPOS PRINCIPAIS (Alinhados 100% com o Prisma)
-   ============================================================ */
-
-export type ResponsibilityLabel =
-  | "TRANSPORT_DAMAGE"
-  | "FACTORY_DEFECT"
-  | "ASSEMBLY_ERROR";
-
-export type TicketStatus =
-  | "OPEN"
-  | "UNDER_REVIEW"
-  | "APPROVED"
-  | "REJECTED"
-  | "COMPLETED"
-  | "CANCELLED";
-
-export type Severity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-
-export type PkgCondition = "INTACT" | "DAMAGED";
-
-export type DefectType = "BROKEN" | "MISSING" | "HARDWARE_FAULT";
-
-export type MediaType =
-  | "AMBIENT"
-  | "DEFECT"
-  | "MANUAL_PAGE"
-  | "LABEL"
-  | "DISCARD_PROOF";
-
-/* ============================================================
-   2. DTOs (Data Transfer Objects)
-   ============================================================ */
-
-export interface TicketInvoiceDTO {
-  number: string;
-  nfeKey: string;
-  customerName: string;
-  customerPhone?: string;
-  productName: string;
-  batchNumber?: string;
-}
-
-export interface TicketPartInputDTO {
-  partCode: string;
-  description: string;
-  quantity: number;
-  damageType:
-    | "PECA_QUEBRADA"
-    | "FALTOU_PECA"
-    | "FERRAGEM_DEFEITUOSA"
-    | "EMBALAGEM_AVARIADA";
-}
-
-export interface CreateTicketDTO {
-  isEmergencyMode: boolean;
-  invoice: TicketInvoiceDTO;
-  packageCondition: PkgCondition;
-  suggestedResponsibility: ResponsibilityLabel;
-  description: string;
-  parts: TicketPartInputDTO[];
-}
-
-export interface CreateTicketPayload {
-  isEmergencyMode?: boolean;
-  packageCondition: "INTACT" | "DAMAGED";
-  suggestedResponsibility?:
-    | "TRANSPORT_DAMAGE"
-    | "FACTORY_DEFECT"
-    | "ASSEMBLY_ERROR";
-  invoice: {
-    nfeKey: string;
-    number: string;
-    series: string;
-    issuedAt: string;
-    customer: {
-      name: string;
-      phone?: string;
-    };
-    productName?: string;
-    batchNumber?: string;
-  };
-  parts: Array<{
-    partCode: string;
-    quantity: number;
-    defectType: "BROKEN" | "MISSING" | "HARDWARE_FAULT";
-    emergencyNotes?: string;
-  }>;
-  mediaFiles?: Array<{
-    url: string;
-    type: "AMBIENT" | "DEFECT" | "LABEL" | "AUDIO";
-    latitude?: number;
-    longitude?: number;
-    capturedAt: string;
-  }>;
-}
-
-/* ============================================================
-   3. ESTRUTURA DE DADOS & INTERFACES (Entidades do Domínio)
-   ============================================================ */
-
-export interface Media {
-  id?: string;
-  ticketId?: string;
-  ticketPartId?: string | null;
-  url: string;
-  type: MediaType | string;
-  latitude?: number | null;
-  longitude?: number | null;
-  capturedAt?: string;
-  createdAt?: string;
-}
-
-export interface TicketPart {
-  id: string;
-  ticketId?: string;
-  partCode: string;
-  quantity: number;
-  defectType: DefectType;
-  emergencyNotes?: string;
-  createdAt?: string;
-  media?: Media[];
-}
-
-export interface Ticket {
-  id: string;
-  code?: string;
-  tenantId?: string;
-  invoiceId?: string;
-  productId?: string;
-  createdById?: string;
-  description?: string;
-
-  status: TicketStatus;
-  suggestedResponsibility?: ResponsibilityLabel;
-  packageCondition?: PkgCondition;
-  severity?: Severity;
-
-  // Relações e metadados retornados pelo Backend
-  customerName?: string;
-  customerPhone?: string;
-  cityName?: string;
-  nfeKey?: string;
-  batchNumber?: string;
-
-  scores?: {
-    transporte: number;
-    fabrica: number;
-    montagem: number;
-  };
-  parts?: TicketPart[];
-  mediaFiles?: Media[];
-
-  createdAt?: string;
-  updatedAt?: string;
-  dueDate?: string; // 👈 Campo adicionado para resolver o erro do TypeScript
-  slaHours?: number;
-  assignedUser?: string;
-}
-
-/* ============================================================
-   4. DICIONÁRIOS DE EXIBIÇÃO (UI LABELS)
-   ============================================================ */
-
-export const RESPONSIBILITY_LABELS: Record<ResponsibilityLabel, string> = {
-  TRANSPORT_DAMAGE: "Avaria no Transporte",
-  FACTORY_DEFECT: "Defeito de Fábrica",
-  ASSEMBLY_ERROR: "Erro de Montagem",
+// Re-exporta tudo para manter compatibilidade com os componentes que já
+// importam tipos e dicionários a partir deste arquivo de serviço
+// (TicketDrawer, TicketDetailsModal, TicketsPage, CreateTicketModal).
+// A fonte real dos tipos agora é exclusivamente ../lib/types.
+export type {
+  ResponsibilityLabel,
+  TicketStatus,
+  Severity,
+  PkgCondition,
+  DefectType,
+  MediaType,
+  VisitStatus,
+  ClaimStatus,
+  RmaStatus,
+  Media,
+  TicketPart,
+  TechnicalVisit,
+  TransportClaim,
+  FactoryRma,
+  TicketEvent,
+  CommentItem,
+  Ticket,
+  CreateTicketPayload,
+  RequiredEmergencyMediaType,
+  EmergencyStatusResponse,
+};
+export {
+  RESPONSIBILITY_LABELS,
+  STATUS_LABELS,
+  VISIT_STATUS_LABELS,
+  CLAIM_STATUS_LABELS,
+  RMA_STATUS_LABELS,
+  SEVERITY_LABELS,
+  STATUS_ORDER,
+  EMERGENCY_MEDIA_LABELS,
 };
 
-export const STATUS_LABELS: Record<TicketStatus, string> = {
-  OPEN: "Aberto",
-  UNDER_REVIEW: "Em Análise",
-  APPROVED: "Aprovado",
-  REJECTED: "Rejeitado",
-  COMPLETED: "Resolvido",
-  CANCELLED: "Cancelado",
-};
-
-export const SEVERITY_LABELS: Record<Severity, string> = {
-  LOW: "Baixa",
-  MEDIUM: "Média",
-  HIGH: "Alta",
-  CRITICAL: "Crítica",
-};
-
-export const STATUS_ORDER: TicketStatus[] = [
-  "OPEN",
-  "UNDER_REVIEW",
-  "APPROVED",
-  "COMPLETED",
-  "CANCELLED",
-];
-
-/* ============================================================
-   5. TICKETS SERVICE
-   ============================================================ */
+export interface TrashedTicket extends Ticket {
+  deletedAt: string;
+  purgeAt: string;
+  daysRemaining: number;
+}
 
 export const ticketsService = {
   async getAll(): Promise<Ticket[]> {
-    try {
-      const response = await api.get<any[]>("/tickets");
+    const response = await api.get<any[]>("/tickets");
 
-      return response.data.map((item) => ({
-        id: item.id,
-        code: item.code,
-        tenantId: item.tenantId,
-        invoiceId: item.invoiceId,
-        productId: item.productId,
-        createdById: item.createdById,
-        description: item.description,
-        status: item.status,
-        suggestedResponsibility: item.suggestedResponsibility ?? undefined,
-        severity: item.severity ?? "MEDIUM",
-        customerName: item.createdBy?.name ?? item.invoice?.customer?.name,
-        customerPhone: item.invoice?.customer?.phone,
-        cityName: item.invoice?.customer?.address?.city,
-        nfeKey: item.invoice?.nfeKey,
-        batchNumber: item.invoice?.batchNumber,
-        packageCondition: item.packageCondition,
-        parts: item.parts ?? [],
-        mediaFiles: item.mediaFiles ?? [],
-        scores: item.scores,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-        dueDate: item.dueDate,
-        slaHours: item.slaHours ?? 24,
-        assignedUser: item.assignedTo?.name,
-      }));
-    } catch {
-      console.warn(
-        "⚠️ Rota /tickets com erro no Backend. Utilizando MOCK temporário.",
-      );
-      return TICKETS_MOCK as unknown as Ticket[];
-    }
+    return response.data.map((item) => ({
+      id: item.id,
+      code: item.code,
+      tenantId: item.tenantId,
+      invoiceId: item.invoiceId,
+      productId: item.productId,
+      createdById: item.createdById,
+      description: item.description,
+      status: item.status,
+      suggestedResponsibility: item.suggestedResponsibility ?? undefined,
+      isEmergencyMode: item.isEmergencyMode ?? false,
+      reverseLogistics: item.reverseLogistics ?? "NONE",
+      reverseLogisticsLabel: item.reverseLogisticsLabel ?? null,
+      severity: item.severity ?? "MEDIUM",
+      customerName: item.createdBy?.name ?? item.invoice?.customer?.name,
+      customerPhone: item.invoice?.customer?.phone,
+      cityName: item.invoice?.customer?.address?.city,
+      nfeKey: item.invoice?.nfeKey,
+      batchNumber: item.invoice?.batchNumber,
+      packageCondition: item.packageCondition,
+      parts: (item.parts ?? []).map((p: any) => ({
+        ...p,
+        media: (item.media ?? []).filter((m: any) => m.ticketPartId === p.id),
+      })),
+      mediaFiles: item.media ?? [],
+      scores: item.scores,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      dueDate: item.dueDate,
+      slaHours: item.slaHours ?? 24,
+      assignedUser: item.assignedTo?.name,
+      comments: (item.comments ?? []).map((c: any) => ({
+        id: c.id,
+        text: c.text,
+        authorId: c.authorId,
+        authorName: c.author?.name,
+        createdAt: c.createdAt,
+      })),
+      technicalVisit: item.technicalVisit
+        ? {
+            id: item.technicalVisit.id,
+            assemblerId: item.technicalVisit.assemblerId,
+            assemblerName: item.technicalVisit.assembler?.name,
+            scheduledAt: item.technicalVisit.scheduledAt,
+            status: item.technicalVisit.status,
+          }
+        : null,
+      transportClaim: item.transportClaim ?? null,
+      factoryRma: item.factoryRma ?? null,
+      events: item.events ?? [],
+    }));
   },
 
   async create(data: CreateTicketPayload): Promise<Ticket> {
-    try {
-      const response = await api.post<{ message: string; ticket: Ticket }>(
-        "/tickets",
-        data,
-      );
-      const item = response.data.ticket || response.data;
-      return {
-        id: item.id,
-        code: item.code,
-        status: item.status,
-        suggestedResponsibility: item.suggestedResponsibility,
-        customerName: item.customerName,
-        customerPhone: item.customerPhone,
-        packageCondition: item.packageCondition,
-        parts: item.parts,
-        mediaFiles: item.mediaFiles,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-        dueDate: item.dueDate,
-        slaHours: item.slaHours ?? 24,
-      } as Ticket;
-    } catch (error) {
-      console.warn(
-        "⚠️ Falha ao conectar ao servidor. Simulado envio local do chamado.",
-        error,
-      );
-
-      return {
-        id: `ticket-${Date.now()}`,
-        code: `FVF-${Math.floor(100000 + Math.random() * 900000)}`,
-        status: "OPEN",
-        suggestedResponsibility: data.suggestedResponsibility ?? undefined,
-        customerName: data.invoice.customer.name,
-        customerPhone: data.invoice.customer.phone,
-        packageCondition: data.packageCondition,
-        batchNumber: "LT-LOCAL",
-        description: data.parts[0]?.emergencyNotes ?? "",
-        severity: "MEDIUM",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-    }
+    // Sem fallback silencioso aqui: se a chamada falhar (rede offline ou
+    // erro de validação do backend), o erro propaga para quem chamou.
+    // A decisão de enfileirar offline agora vive no CreateTicketModal,
+    // que sabe distinguir "sem internet" de "erro de validação real".
+    const response = await api.post<{ message: string; ticket: Ticket }>(
+      "/tickets",
+      data,
+    );
+    const item = response.data.ticket || response.data;
+    return {
+      id: item.id,
+      code: item.code,
+      status: item.status,
+      suggestedResponsibility: item.suggestedResponsibility,
+      customerName: item.customerName,
+      customerPhone: item.customerPhone,
+      packageCondition: item.packageCondition,
+      parts: item.parts,
+      mediaFiles: item.mediaFiles,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      dueDate: item.dueDate,
+      slaHours: item.slaHours ?? 24,
+    } as Ticket;
   },
 
   async updateStatus(id: string, status: TicketStatus): Promise<void> {
@@ -311,17 +190,23 @@ export const ticketsService = {
   },
 
   async getPresignedUrl(
-    fileName: string,
+    ticketId: string,
     fileType: string,
-  ): Promise<{ uploadUrl: string; publicUrl: string }> {
-    const response = await api.post("/media/presign", { fileName, fileType });
+  ): Promise<{ uploadUrl: string; publicUrl: string; objectKey: string }> {
+    const response = await api.post("/media/presign", {
+      ticketId,
+      contentType: fileType,
+    });
     return response.data;
   },
 
-  async uploadFileToR2(file: File): Promise<string> {
+  async uploadFileToR2(
+    file: File,
+    ticketId: string,
+  ): Promise<{ publicUrl: string; objectKey: string } | null> {
     try {
-      const { uploadUrl, publicUrl } = await this.getPresignedUrl(
-        file.name,
+      const { uploadUrl, publicUrl, objectKey } = await this.getPresignedUrl(
+        ticketId,
         file.type,
       );
       await fetch(uploadUrl, {
@@ -329,13 +214,135 @@ export const ticketsService = {
         headers: { "Content-Type": file.type },
         body: file,
       });
-      return publicUrl;
+      return { publicUrl, objectKey };
     } catch {
-      return URL.createObjectURL(file);
+      return null;
     }
+  },
+
+  async confirmMedia(params: {
+    ticketId: string;
+    objectKey: string;
+    mediaType: MediaType;
+    capturedAt: string;
+    ticketPartId?: string;
+    latitude?: number;
+    longitude?: number;
+  }): Promise<void> {
+    await api.post("/media/confirm", params);
   },
 
   async delete(id: string): Promise<void> {
     await api.delete(`/tickets/${id}`);
+  },
+
+  async getAssemblers(): Promise<{ id: string; name: string }[]> {
+    try {
+      const response =
+        await api.get<{ id: string; name: string }[]>("/users/assemblers");
+      return response.data;
+    } catch {
+      return [];
+    }
+  },
+
+  async scheduleVisit(
+    ticketId: string,
+    assemblerId: string,
+    scheduledAt: string,
+  ): Promise<void> {
+    await api.patch(`/tickets/${ticketId}/visit`, { assemblerId, scheduledAt });
+  },
+
+  async updateVisitStatus(
+    ticketId: string,
+    status: VisitStatus,
+  ): Promise<void> {
+    await api.patch(`/tickets/${ticketId}/visit/status`, { status });
+  },
+
+  async openClaim(
+    ticketId: string,
+    data: { carrierName: string; claimNumber: string; claimedValue?: number },
+  ): Promise<TransportClaim> {
+    const response = await api.patch<{
+      message: string;
+      claim: TransportClaim;
+    }>(`/tickets/${ticketId}/claim`, data);
+    return response.data.claim;
+  },
+
+  async updateClaimStatus(
+    ticketId: string,
+    status: ClaimStatus,
+  ): Promise<TransportClaim> {
+    const response = await api.patch<{
+      message: string;
+      claim: TransportClaim;
+    }>(`/tickets/${ticketId}/claim/status`, { status });
+    return response.data.claim;
+  },
+
+  async requestRma(
+    ticketId: string,
+    data: { rmaNumber: string; responseDueAt?: string },
+  ): Promise<FactoryRma> {
+    const response = await api.patch<{ message: string; rma: FactoryRma }>(
+      `/tickets/${ticketId}/rma`,
+      data,
+    );
+    return response.data.rma;
+  },
+
+  async updateRmaStatus(
+    ticketId: string,
+    status: RmaStatus,
+  ): Promise<FactoryRma> {
+    const response = await api.patch<{ message: string; rma: FactoryRma }>(
+      `/tickets/${ticketId}/rma/status`,
+      { status },
+    );
+    return response.data.rma;
+  },
+
+  async getEmergencyStatus(ticketId: string): Promise<EmergencyStatusResponse> {
+    const response = await api.get<EmergencyStatusResponse>(
+      `/tickets/${ticketId}/emergency-status`,
+    );
+    return response.data;
+  },
+
+  async decideReverseLogistics(
+    ticketId: string,
+    decision: "REQUIRE_RETURN" | "AUTHORIZE_DISCARD",
+  ): Promise<{
+    id: string;
+    reverseLogistics: ReverseLogisticsStatus;
+    reverseLogisticsLabel: string | null;
+  }> {
+    const response = await api.patch<{
+      message: string;
+      ticket: {
+        id: string;
+        reverseLogistics: ReverseLogisticsStatus;
+        reverseLogisticsLabel: string | null;
+      };
+    }>(`/tickets/${ticketId}/reverse-logistics`, { decision });
+    return response.data.ticket;
+  },
+
+  async getTrash(): Promise<{ trash: TrashedTicket[]; retentionDays: number }> {
+    const response = await api.get<{
+      trash: TrashedTicket[];
+      retentionDays: number;
+    }>("/tickets/trash");
+    return response.data;
+  },
+
+  async restore(id: string): Promise<Ticket> {
+    const response = await api.patch<{ message: string; ticket: Ticket }>(
+      `/tickets/${id}/restore`,
+    );
+    return response.data.ticket;
   },
 };

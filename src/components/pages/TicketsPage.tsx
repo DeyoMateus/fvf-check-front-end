@@ -50,7 +50,11 @@ const RESP_ICONS: Record<ResponsibilityLabel, typeof Truck> = {
   ASSEMBLY_ERROR: Wrench,
 };
 
-export function TicketsPage() {
+interface TicketsPageProps {
+  externalQuery?: string;
+}
+
+export function TicketsPage({ externalQuery }: TicketsPageProps) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -74,6 +78,16 @@ export function TicketsPage() {
   useEffect(() => {
     fetchTickets();
   }, []);
+
+  // Sincroniza com a busca global do Topbar (texto digitado ou DANFE
+  // escaneada). O usuário ainda pode digitar livremente no campo local
+  // de busca desta página — a prop externa só atualiza o valor inicial
+  // sempre que mudar (ex: um novo scan), sem travar a edição manual.
+  useEffect(() => {
+    if (externalQuery !== undefined) {
+      setQuery(externalQuery);
+    }
+  }, [externalQuery]);
 
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {

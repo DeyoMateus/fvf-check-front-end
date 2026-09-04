@@ -1,6 +1,6 @@
 import { api } from "../lib/api";
 
-export type Periodo = "7d" | "30d" | "90d" | "12m";
+export type Periodo = "7d" | "30d" | "90d" | "12m" | "custom";
 
 export interface AnalyticsResponse {
   kpis: Array<{
@@ -20,12 +20,24 @@ export interface AnalyticsResponse {
     cat: "TRANSPORTE" | "FABRICA" | "MONTAGEM";
     qtd: number;
   }>;
+  insights: {
+    slaMedioHoras: number;
+    alertaProducao: string;
+  };
 }
 
 export const reportsService = {
-  async getAnalytics(periodo: Periodo): Promise<AnalyticsResponse> {
+  async getAnalytics(
+    periodo: Periodo,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<AnalyticsResponse> {
     const response = await api.get<AnalyticsResponse>("/analyst/analytics", {
-      params: { periodo },
+      params: {
+        periodo,
+        ...(periodo === "custom" && startDate ? { startDate } : {}),
+        ...(periodo === "custom" && endDate ? { endDate } : {}),
+      },
     });
     return response.data;
   },

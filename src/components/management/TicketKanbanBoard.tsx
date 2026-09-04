@@ -19,7 +19,7 @@ interface TicketKanbanBoardProps {
   onStatusChange?: (ticketId: string, newStatus: TicketStatus) => Promise<void> | void;
 }
 
-type FilterResp = "TODOS" | "TRANSPORTE" | "FABRICA" | "MONTAGEM";
+type FilterResp = "TODOS" | "TRANSPORTE" | "FABRICA" | "MONTAGEM" | "CANCELADOS";
 type SortMode = "sla" | "score" | "recente";
 
 const COL_ACCENT: Record<TicketStatus, string> = {
@@ -42,17 +42,29 @@ export function TicketKanbanBoard({
   const [filter, setFilter] = useState<FilterResp>("TODOS");
   const [sort, setSort] = useState<SortMode>("sla");
 
+  // Determina quais colunas devem ser exibidas (4 padrão ou 5 incluindo CANCELLED)
+  const columnsToDisplay = useMemo(() => {
+    const baseColumns = STATUS_ORDER.filter((s) => s !== "CANCELLED");
+    if (filter === "CANCELADOS") {
+      return [...baseColumns, "CANCELLED" as TicketStatus];
+    }
+    return baseColumns;
+  }, [filter]);
+
   // Filtra e ordena diretamente a prop "tickets" enviada pelo App.tsx
   const filtered = useMemo(() => {
     let arr = tickets;
     
     if (filter === "TRANSPORTE") {
-      arr = arr.filter((t) => t.suggestedResponsibility === "TRANSPORT_DAMAGE");
+      arr = arr.filter((t) => t.suggestedResponsibility === "TRANSPORT_DAMAGE" && t.status !== "CANCELLED");
     } else if (filter === "FABRICA") {
-      arr = arr.filter((t) => t.suggestedResponsibility === "FACTORY_DEFECT");
+      arr = arr.filter((t) => t.suggestedResponsibility === "FACTORY_DEFECT" && t.status !== "CANCELLED");
     } else if (filter === "MONTAGEM") {
-      arr = arr.filter((t) => t.suggestedResponsibility === "ASSEMBLY_ERROR");
+      arr = arr.filter((t) => t.suggestedResponsibility === "ASSEMBLY_ERROR" && t.status !== "CANCELLED");
+    } else if (filter === "TODOS") {
+      arr = arr.filter((t) => t.status !== "CANCELLED");
     }
+    // Quando filter === "CANCELADOS", mantém todos os tickets (incluindo os cancelados) para preencher o board de 5 colunas
 
     if (sort === "sla") {
       arr = [...arr].sort((a, b) => (a.slaHours ?? 24) - (b.slaHours ?? 24));
@@ -89,7 +101,6 @@ export function TicketKanbanBoard({
     const id = e.dataTransfer.getData("text/plain") || dragId;
     if (!id) return;
 
-    // Notifica o componente pai (App.tsx) que atualizará o estado global imediatamente
     if (onStatusChange) {
       try {
         await onStatusChange(id, col);
@@ -119,6 +130,7 @@ export function TicketKanbanBoard({
             { value: "TRANSPORTE", label: "Transporte" },
             { value: "FABRICA", label: "Fábrica" },
             { value: "MONTAGEM", label: "Montagem" },
+            { value: "CANCELADOS", label: "Cancelados" },
           ]}
         />
         <div className="ml-auto flex items-center gap-2">
@@ -145,8 +157,13 @@ export function TicketKanbanBoard({
       {isLoading ? (
         <BoardSkeleton />
       ) : (
-        <div className="grid flex-1 grid-cols-1 gap-4 overflow-x-auto md:grid-cols-2 xl:grid-cols-4">
-          {STATUS_ORDER.map((status) => {
+        <div
+          className={cn(
+            "grid flex-1 grid-cols-1 gap-4 overflow-x-auto md:grid-cols-2",
+            columnsToDisplay.length === 5 ? "xl:grid-cols-5" : "xl:grid-cols-4"
+          )}
+        >
+          {columnsToDisplay.map((status) => {
             const col = filtered.filter((t) => t.status === status);
             const isOver = dragOver === status;
             return (
@@ -161,13 +178,13 @@ export function TicketKanbanBoard({
                   COL_ACCENT[status],
                   isOver
                     ? "border-gold-400/60 bg-gold-500/5"
-                    : "border-steel-700/40",
+                    : "border-steel-700/40"
                 )}
               >
                 {/* Col header */}
                 <div className="mb-3 flex items-center justify-between px-1">
                   <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-steel-200">
-                    {STATUS_LABELS[status]}
+                    {STATUS_LABELS[status] ?? status}
                   </h3>
                   <Badge variant={col.length ? "gold" : "muted"}>
                     {col.length}
@@ -187,7 +204,7 @@ export function TicketKanbanBoard({
                         onDragEnd={handleDragEnd}
                         className={cn(
                           "cursor-grab active:cursor-grabbing transition-opacity",
-                          dragId === t.id && "opacity-40",
+                          dragId === t.id && "opacity-40"
                         )}
                       >
                         <TicketCard
