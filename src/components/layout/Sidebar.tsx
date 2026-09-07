@@ -1,4 +1,17 @@
-import { LayoutDashboard, Inbox, Users, Factory, PackageSearch, BarChart3, Settings, LifeBuoy, Anchor, Menu, X, LogOut, Trash2 } from "lucide-react";
+import {
+  LayoutDashboard,
+  Inbox,
+  Users,
+  Factory,
+  PackageSearch,
+  BarChart3,
+  Settings,
+  LifeBuoy,
+  Menu,
+  X,
+  LogOut,
+  Trash2,
+} from "lucide-react";
 
 import { useState } from "react";
 import { cn } from "../../utils/cn";
@@ -15,13 +28,11 @@ const NAV = [
   { id: "tickets", label: "Gestão de Ticket", icon: LifeBuoy },
   { id: "fabricas", label: "Fábricas", icon: Factory },
   { id: "pecas", label: "Peças & Lotes", icon: PackageSearch },
-  { id: "montadores", label: "Montadores", icon: Users },
+  { id: "equipe", label: "Equipe", icon: Users },
   { id: "relatorios", label: "Relatórios", icon: BarChart3 },
 ];
 
-const FOOT = [
-  { id: "config", label: "Configurações", icon: Settings },
-];
+const FOOT = [{ id: "config", label: "Configurações", icon: Settings }];
 
 export function Sidebar({ active, onChange }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -65,8 +76,12 @@ export function Sidebar({ active, onChange }: SidebarProps) {
         <div className="flex items-center justify-between gap-3 px-5 py-5">
           <div className="flex items-center gap-3">
             <div className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-gold-500/40 bg-gradient-to-br from-abyss-700 to-abyss-900 glow-gold">
-              <Anchor className="h-5 w-5 text-gold-300" />
-              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-gold-400 pulse-dot" />
+              {/* Imagem da pasta public */}
+              <img
+                src="/fvf.png"
+                alt="Logo FVF Check"
+                className="h-9 w-9 rounded-md object-cover"
+              />
             </div>
             <div>
               <p className="font-bold tracking-[0.18em] text-steel-50">
@@ -75,6 +90,15 @@ export function Sidebar({ active, onChange }: SidebarProps) {
               <p className="text-[10px] font-semibold uppercase tracking-widest text-gold-400">
                 Painel de Gestão
               </p>
+
+              {user?.tenant?.name && (
+                <p
+                  className="mt-0.5 truncate text-[11px] font-medium text-steel-400"
+                  title={user.tenant.name}
+                >
+                  {user.tenant.name}
+                </p>
+              )}
             </div>
           </div>
           <button
@@ -151,20 +175,25 @@ export function Sidebar({ active, onChange }: SidebarProps) {
           })}
 
           {canSeeTrash && (
-           <button
-             type="button"
-             onClick={() => navigate("lixeira")}
-             className={cn(
-               "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
-               active === "lixeira"
-                 ? "bg-gold-500/10 text-gold-200 shadow-[inset_0_0_0_1px_rgba(227,185,33,0.25)]"
-                 : "text-steel-400 hover:bg-abyss-800/60 hover:text-steel-100",
-             )}
-           >
-             <Trash2 className={cn("h-4 w-4", active === "lixeira" && "text-gold-300")} />
-             Lixeira
-           </button>
-         )}
+            <button
+              type="button"
+              onClick={() => navigate("lixeira")}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                active === "lixeira"
+                  ? "bg-gold-500/10 text-gold-200 shadow-[inset_0_0_0_1px_rgba(227,185,33,0.25)]"
+                  : "text-steel-400 hover:bg-abyss-800/60 hover:text-steel-100",
+              )}
+            >
+              <Trash2
+                className={cn(
+                  "h-4 w-4",
+                  active === "lixeira" && "text-gold-300",
+                )}
+              />
+              Lixeira
+            </button>
+          )}
 
           <button
             type="button"
@@ -177,7 +206,7 @@ export function Sidebar({ active, onChange }: SidebarProps) {
 
           <div className="mt-3 rounded-lg border border-steel-700/50 bg-abyss-900/60 p-3 text-[10px] text-steel-400">
             <p className="font-bold uppercase tracking-widest text-gold-400">
-              Tenant: {user?.tenantId ? user.tenantId.substring(0, 8) : "Global"}
+              {user?.tenant?.planType ?? "Global"}
             </p>
             <p className="mt-1">Integração ERP Conectada</p>
           </div>

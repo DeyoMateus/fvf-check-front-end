@@ -80,6 +80,7 @@ export interface CreateTicketPayload {
   isEmergencyMode?: boolean;
   packageCondition: PkgCondition;
   suggestedResponsibility?: ResponsibilityLabel;
+  productSku?: string;
   invoice: {
     nfeKey: string;
     number: string;
@@ -211,6 +212,17 @@ export interface Ticket {
   cityName?: string;
   nfeKey?: string;
   batchNumber?: string;
+
+  product?: {
+    id: string;
+    sku: string;
+    name: string;
+    tenant?: {
+      id: string;
+      name: string;
+      planType: "LOJISTA" | "REDE" | "FABRICA";
+    } | null;
+  } | null;
 
   scores?: {
     transporte: number;

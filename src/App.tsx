@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LoginPage } from "./components/pages/LoginPage";
+import { ForgotPasswordPage } from "./components/pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./components/pages/ResetPasswordPage";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Topbar } from "./components/layout/Topbar";
 import { TicketKanbanBoard } from "./components/management/TicketKanbanBoard";
@@ -30,14 +32,13 @@ import { ticketsService } from "./services/tickets.service";
 import { AssemblerScannerView } from "./components/assembler/EvidenciaGallery";
 import { FabricasPage } from "./components/pages/FabricasPage";
 import { PecasLotesPage } from "./components/pages/PecasLotesPage";
-import { MontadoresPage } from "./components/pages/MontadoresPage";
+import { EquipePage } from "./components/pages/EquipePage";
 import { RelatoriosPage } from "./components/pages/RelatoriosPage";
 import { ConfiguracoesPage } from "./components/pages/ConfiguracoesPage";
 import { Ticket, TicketStatus } from "./lib/types";
 import { cn } from "./utils/cn";
 import { TicketsPage } from "./components/pages/TicketsPage";
-import { toast } from 'sonner';
-
+import { toast } from "sonner";
 
 type Mode = "painel" | "pwa";
 type PageId =
@@ -45,7 +46,7 @@ type PageId =
   | "tabela"
   | "fabricas"
   | "pecas"
-  | "montadores"
+  | "equipe"
   | "relatorios"
   | "suporte"
   | "config"
@@ -58,6 +59,7 @@ function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
   const buildTarget = import.meta.env.MODE === "pwa" ? "pwa" : "painel";
   const [mode, setMode] = useState<Mode>(buildTarget);
+  const [authView, setAuthView] = useState<"login" | "forgot">("login");
 
   if (isLoading) {
     return (
@@ -69,14 +71,20 @@ function AppContent() {
     );
   }
 
+  if (window.location.pathname === "/reset-password") {
+    return <ResetPasswordPage />;
+  }
+
   if (!isAuthenticated) {
-    return <LoginPage />;
+    if (authView === "forgot") {
+      return <ForgotPasswordPage onBackToLogin={() => setAuthView("login")} />;
+    }
+    return <LoginPage onForgotPassword={() => setAuthView("forgot")} />;
   }
 
   return (
     <div className="min-h-screen bg-abyss-950 text-steel-100">
-      
-       {/* O seletor manual só aparece em ambiente de desenvolvimento
+      {/* O seletor manual só aparece em ambiente de desenvolvimento
           (npm run dev, sem --mode pwa) — útil pra visualizar as duas
           telas durante o trabalho de design, mas nunca em produção,
           onde cada build já sabe qual experiência mostrar. */}
@@ -101,7 +109,13 @@ export default function App() {
 
 /* ========== SELETOR DE MODO (DEMO) ========== */
 
-function ModeSwitcher({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+function ModeSwitcher({
+  mode,
+  onChange,
+}: {
+  mode: Mode;
+  onChange: (m: Mode) => void;
+}) {
   return (
     <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
       <div className="rounded-full border border-gold-500/40 bg-abyss-950/90 p-1 shadow-2xl backdrop-blur glow-gold">
@@ -136,7 +150,7 @@ function PainelGestao() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-    const visibleTickets = useMemo(() => {
+  const visibleTickets = useMemo(() => {
     if (!searchQuery.trim()) return tickets;
     const q = searchQuery.trim().toLowerCase();
     return tickets.filter(
@@ -151,7 +165,10 @@ function PainelGestao() {
   useEffect(() => {
     if (selected) {
       const updatedCurrent = tickets.find((t) => t.id === selected.id);
-      if (updatedCurrent && JSON.stringify(updatedCurrent) !== JSON.stringify(selected)) {
+      if (
+        updatedCurrent &&
+        JSON.stringify(updatedCurrent) !== JSON.stringify(selected)
+      ) {
         setSelected(updatedCurrent);
       }
     }
@@ -179,54 +196,77 @@ function PainelGestao() {
   }, [loadTickets]);
 
   // Função central para alterar status usada tanto pelo Drawer quanto pelo Kanban (Drag & Drop)
-  const handleStatusChange = useCallback(async (ticketId: string, newStatus: TicketStatus) => {
-    const typedStatus = newStatus as TicketStatus;
+  const handleStatusChange = useCallback(
+    async (ticketId: string, newStatus: TicketStatus) => {
+      const typedStatus = newStatus as TicketStatus;
 
-    // 1. Atualização Otimista
-    setTickets((prev) =>
-      prev.map((t) => (t.id === ticketId ? { ...t, status: typedStatus } : t))
-    );
+      // 1. Atualização Otimista
+      setTickets((prev) =>
+        prev.map((t) =>
+          t.id === ticketId ? { ...t, status: typedStatus } : t,
+        ),
+      );
 
-    setSelected((prev: Ticket | null) =>
-      prev && prev.id === ticketId ? { ...prev, status: typedStatus } : prev
-    );
+      setSelected((prev: Ticket | null) =>
+        prev && prev.id === ticketId ? { ...prev, status: typedStatus } : prev,
+      );
 
-    // 2. Persistência na API
-    try {
-      await ticketsService.updateStatus(ticketId, typedStatus);
-      toast.success("Status atualizado com sucesso!", {
-        position: "top-center",
-        style: {
-          fontSize: "16px",
-          fontWeight: "600",
-          padding: "16px 28px",
-          borderRadius: "12px",
-        },
-      });
-    } catch (err) {
-      toast.error("Erro ao sincronizar status com o servidor.", {
-        position: "top-center",
-      });
-    }
-  }, []);
+      // 2. Persistência na API
+      try {
+        await ticketsService.updateStatus(ticketId, typedStatus);
+        toast.success("Status atualizado com sucesso!", {
+          position: "top-center",
+          style: {
+            fontSize: "16px",
+            fontWeight: "600",
+            padding: "16px 28px",
+            borderRadius: "12px",
+          },
+        });
+      } catch (err) {
+        toast.error("Erro ao sincronizar status com o servidor.", {
+          position: "top-center",
+        });
+      }
+    },
+    [],
+  );
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar active={active} onChange={(id) => setActive(id as PageId)} />
-      
+
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
-         onNewTicket={() => setIsCreateModalOpen(true)}
-         onSearch={setSearchQuery}
-         onScanDanfe={(scannedValue) => {
-           setSearchQuery(scannedValue);
-           // Garante que o resultado do scan seja visível mesmo se o
-           // usuário estava numa página que não lista tickets (ex: Fábricas)
-           if (active !== "kanban" && active !== "tabela" && active !== "tickets") {
-             setActive("kanban");
-           }
-         }}
-       />
+          onNewTicket={() => setIsCreateModalOpen(true)}
+          onSearch={setSearchQuery}
+          onNotificationClick={(ticketId) => {
+            setActive("kanban");
+            const found = tickets.find((t) => t.id === ticketId);
+            if (found) {
+              setSelected(found);
+            } else {
+              // Ticket pode não estar no array atual (filtro de busca ativo,
+              // ou ainda não sincronizado) — recarrega e tenta de novo.
+              loadTickets().then(() => {
+                const refreshed = tickets.find((t) => t.id === ticketId);
+                if (refreshed) setSelected(refreshed);
+              });
+            }
+          }}
+          onScanDanfe={(scannedValue) => {
+            setSearchQuery(scannedValue);
+            // Garante que o resultado do scan seja visível mesmo se o
+            // usuário estava numa página que não lista tickets (ex: Fábricas)
+            if (
+              active !== "kanban" &&
+              active !== "tabela" &&
+              active !== "tickets"
+            ) {
+              setActive("kanban");
+            }
+          }}
+        />
 
         <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-24">
           {active === "kanban" && (
@@ -251,30 +291,35 @@ function PainelGestao() {
           )}
           {active === "fabricas" && <FabricasPage />}
           {active === "pecas" && <PecasLotesPage />}
-          {active === "montadores" && <MontadoresPage />}
+          {active === "equipe" && <EquipePage />}
           {active === "relatorios" && <RelatoriosPage />}
           {active === "config" && <ConfiguracoesPage />}
-           {active === "tickets" && <TicketsPage externalQuery={searchQuery} />}
+          {active === "tickets" && <TicketsPage externalQuery={searchQuery} />}
           {active === "lixeira" && <LixeiraPage />}
         </main>
       </div>
 
-      <TicketDrawer 
-        key={selected ? `${selected.id}-${selected.status}` : 'drawer-closed'}
-        ticket={selected} 
+      <TicketDrawer
+        key={selected ? `${selected.id}-${selected.status}` : "drawer-closed"}
+        ticket={selected}
         onClose={() => setSelected(null)}
         onStatusChange={handleStatusChange}
+        onRefreshTicket={loadTickets}
         onAddComment={async (ticketId, comment) => {
           await ticketsService.addComment(ticketId, comment);
           loadTickets();
         }}
         onTriggerAction={async (actionType, ticketId) => {
           if (actionType === "TRANSPORTE_CLAIM") {
-            await ticketsService.updateResponsibility(ticketId, "TRANSPORT_DAMAGE");
+            await ticketsService.updateResponsibility(
+              ticketId,
+              "TRANSPORT_DAMAGE",
+            );
           } else if (actionType === "FACTORY_RMA") {
-            await ticketsService.updateResponsibility(ticketId, "FACTORY_DEFECT");
-          } else if (actionType === "TECH_VISIT_SCHEDULED") {
-            
+            await ticketsService.updateResponsibility(
+              ticketId,
+              "FACTORY_DEFECT",
+            );
           }
           loadTickets();
         }}
@@ -307,15 +352,18 @@ function TriagemPage({
   onTicketClick: (t: Ticket) => void;
   tickets: Ticket[];
   isLoading: boolean;
-  onStatusChange?: (ticketId: string, newStatus: TicketStatus) => Promise<void> | void;
+  onStatusChange?: (
+    ticketId: string,
+    newStatus: TicketStatus,
+  ) => Promise<void> | void;
 }) {
   const safeTickets = Array.isArray(tickets) ? tickets : [];
   const total = safeTickets.length;
-  
+
   const abertos = safeTickets.filter(
-    (t) => t.status === "OPEN" || t.status === "UNDER_REVIEW"
+    (t) => t.status === "OPEN" || t.status === "UNDER_REVIEW",
   ).length;
-  
+
   const criticos = safeTickets.filter((t) => t.severity === "CRITICAL").length;
 
   const hojeStr = new Date().toISOString().split("T")[0];
@@ -327,19 +375,24 @@ function TriagemPage({
   });
 
   const resolvidosHoje = ticketsHoje.filter(
-    (t) => t.status === "COMPLETED" || t.status === "APPROVED"
+    (t) => t.status === "COMPLETED" || t.status === "APPROVED",
   ).length;
 
   const totalHoje = ticketsHoje.length;
 
-  const taxaResolucaoHoje = totalHoje > 0 
-    ? Math.round((resolvidosHoje / totalHoje) * 100) 
-    : 0;
+  const taxaResolucaoHoje =
+    totalHoje > 0 ? Math.round((resolvidosHoje / totalHoje) * 100) : 0;
 
   const porResp = {
-    transporte: safeTickets.filter((t) => t.suggestedResponsibility === "TRANSPORT_DAMAGE").length,
-    fabrica: safeTickets.filter((t) => t.suggestedResponsibility === "FACTORY_DEFECT").length,
-    montagem: safeTickets.filter((t) => t.suggestedResponsibility === "ASSEMBLY_ERROR").length,
+    transporte: safeTickets.filter(
+      (t) => t.suggestedResponsibility === "TRANSPORT_DAMAGE",
+    ).length,
+    fabrica: safeTickets.filter(
+      (t) => t.suggestedResponsibility === "FACTORY_DEFECT",
+    ).length,
+    montagem: safeTickets.filter(
+      (t) => t.suggestedResponsibility === "ASSEMBLY_ERROR",
+    ).length,
   };
 
   return (
@@ -348,8 +401,8 @@ function TriagemPage({
         kicker="FVF CHECK • Triagem"
         title={
           <>
-            <span className="text-gold-gradient">Painel de Triagem</span> — Setor
-            Moveleiro
+            <span className="text-gold-gradient">Painel de Triagem</span> —
+            Setor Moveleiro
           </>
         }
         description={
@@ -357,8 +410,8 @@ function TriagemPage({
             Classifique automaticamente a responsabilidade entre{" "}
             <span className="font-semibold text-amber-300">Transporte</span>,{" "}
             <span className="font-semibold text-red-300">Fábrica</span> e{" "}
-            <span className="font-semibold text-sky-300">Montagem</span> com base
-            em evidências fotográficas, lote e histórico.
+            <span className="font-semibold text-sky-300">Montagem</span> com
+            base em evidências fotográficas, lote e histórico.
           </>
         }
       />
@@ -520,7 +573,6 @@ function RespBar({
 /* ========== PWA PREVIEW (FRAME DE CELULAR) ========== */
 
 function PwaPreview() {
-
   const [tab, setTab] = useState<"novo" | "meus">("novo");
 
   return (
@@ -539,26 +591,30 @@ function PwaPreview() {
           </p>
         </div>
 
-         <div className="mx-auto mb-3 flex max-w-[400px] rounded-lg border border-steel-700/60 bg-abyss-900/60 p-1">
-        <button
-          onClick={() => setTab("novo")}
-          className={cn(
-            "flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors",
-            tab === "novo" ? "bg-gold-500/15 text-gold-200" : "text-steel-400",
-          )}
-        >
-          Novo Chamado
-        </button>
-        <button
-          onClick={() => setTab("meus")}
-          className={cn(
-            "flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors",
-            tab === "meus" ? "bg-gold-500/15 text-gold-200" : "text-steel-400",
-          )}
-        >
-          Meus Chamados
-        </button>
-      </div>
+        <div className="mx-auto mb-3 flex max-w-[400px] rounded-lg border border-steel-700/60 bg-abyss-900/60 p-1">
+          <button
+            onClick={() => setTab("novo")}
+            className={cn(
+              "flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors",
+              tab === "novo"
+                ? "bg-gold-500/15 text-gold-200"
+                : "text-steel-400",
+            )}
+          >
+            Novo Chamado
+          </button>
+          <button
+            onClick={() => setTab("meus")}
+            className={cn(
+              "flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors",
+              tab === "meus"
+                ? "bg-gold-500/15 text-gold-200"
+                : "text-steel-400",
+            )}
+          >
+            Meus Chamados
+          </button>
+        </div>
 
         <div
           className={cn(

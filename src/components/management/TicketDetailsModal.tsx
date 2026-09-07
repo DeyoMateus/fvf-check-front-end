@@ -15,6 +15,7 @@ import {
   Loader2,
   Trash2,
   Image as ImageIcon,
+  FileDown,
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -60,6 +61,7 @@ export function TicketDetailsModal({
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { open: openImageViewer } = useImageViewer();
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [selectedResponsibility, setSelectedResponsibility] = useState<
     ResponsibilityLabel | undefined
   >(ticket?.suggestedResponsibility);
@@ -75,10 +77,14 @@ export function TicketDetailsModal({
     try {
       setUpdating(true);
       await ticketsService.updateStatus(currentTicket!.id, newStatus);
-      
+
       // Atualiza o estado local imediatamente para refletir na UI sem precisar reabrir o modal
-      setCurrentTicket((prev) => (prev ? { ...prev, status: newStatus } : null));
-      toast.success(`Status atualizado para ${STATUS_LABELS[newStatus] || newStatus}`);
+      setCurrentTicket((prev) =>
+        prev ? { ...prev, status: newStatus } : null,
+      );
+      toast.success(
+        `Status atualizado para ${STATUS_LABELS[newStatus] || newStatus}`,
+      );
       onRefresh();
     } catch (error) {
       console.error("Erro ao atualizar status:", error);
@@ -89,14 +95,19 @@ export function TicketDetailsModal({
   }
 
   async function handleAssignResponsibility(
-    responsibility: ResponsibilityLabel
+    responsibility: ResponsibilityLabel,
   ) {
     try {
       setUpdating(true);
       setSelectedResponsibility(responsibility);
-      await ticketsService.updateResponsibility(currentTicket!.id, responsibility);
-      
-      setCurrentTicket((prev) => (prev ? { ...prev, suggestedResponsibility: responsibility } : null));
+      await ticketsService.updateResponsibility(
+        currentTicket!.id,
+        responsibility,
+      );
+
+      setCurrentTicket((prev) =>
+        prev ? { ...prev, suggestedResponsibility: responsibility } : null,
+      );
       toast.success("Responsabilidade atribuída com sucesso!");
       onRefresh();
     } catch (error) {
@@ -115,13 +126,15 @@ export function TicketDetailsModal({
           try {
             setDeleting(true);
             await ticketsService.delete(currentTicket!.id);
-            toast.success("Chamado movido para lixeira, será excluído em 5 dias.");
+            toast.success(
+              "Chamado movido para lixeira, será excluído em 5 dias.",
+            );
             onRefresh();
             onClose();
           } catch (error: any) {
             toast.error(
               error?.response?.data?.message ||
-                "Você não tem permissão para excluir este chamado (já em andamento)."
+                "Você não tem permissão para excluir este chamado (já em andamento).",
             );
           } finally {
             setDeleting(false);
@@ -131,10 +144,27 @@ export function TicketDetailsModal({
     });
   }
 
+  async function handleExportPdf() {
+    try {
+      setExportingPdf(true);
+      const blob = await ticketsService.exportDossierPdf(currentTicket!.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dossie-${currentTicket!.code || currentTicket!.id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Erro ao exportar dossiê:", error);
+      toast.error("Não foi possível gerar o dossiê em PDF.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-steel-700/60 bg-abyss-900 shadow-2xl overflow-hidden text-steel-100">
-        
         {/* Cabeçalho */}
         <div className="flex items-center justify-between border-b border-steel-800 bg-abyss-950 px-6 py-4">
           <div className="flex items-center gap-3">
@@ -146,14 +176,18 @@ export function TicketDetailsModal({
                 <h3 className="font-bold text-steel-50 text-base">
                   Detalhes do Chamado
                 </h3>
-                <Badge variant={STATUS_VARIANTS[currentTicket.status] || "muted"}>
+                <Badge
+                  variant={STATUS_VARIANTS[currentTicket.status] || "muted"}
+                >
                   {STATUS_LABELS[currentTicket.status] || currentTicket.status}
                 </Badge>
               </div>
               <p className="text-xs text-steel-400">
                 Aberto em{" "}
                 {currentTicket.createdAt
-                  ? new Date(currentTicket.createdAt).toLocaleDateString("pt-BR")
+                  ? new Date(currentTicket.createdAt).toLocaleDateString(
+                      "pt-BR",
+                    )
                   : "N/A"}
               </p>
             </div>
@@ -168,12 +202,11 @@ export function TicketDetailsModal({
 
         {/* Conteúdo */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-
           <EmergencyStatusBanner
             ticketId={currentTicket.id}
             isEmergencyMode={currentTicket.isEmergencyMode}
-        />
-          
+          />
+
           {/* Ações Rápidas de Status (Incluindo OPEN, UNDER_REVIEW, APPROVED, REJECTED) */}
           <div className="rounded-xl border border-steel-700/50 bg-abyss-950/60 p-4">
             <span className="text-[10px] font-bold uppercase tracking-widest text-gold-400 block mb-3">
@@ -187,7 +220,7 @@ export function TicketDetailsModal({
                   "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
                   currentTicket.status === "OPEN"
                     ? "border-amber-500/50 bg-amber-500/20 text-amber-300 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.3)]"
-                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-amber-500/40 hover:text-amber-300"
+                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-amber-500/40 hover:text-amber-300",
                 )}
               >
                 <Clock className="h-4 w-4" />
@@ -201,7 +234,7 @@ export function TicketDetailsModal({
                   "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
                   currentTicket.status === "UNDER_REVIEW"
                     ? "border-blue-500/50 bg-blue-500/20 text-blue-300 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.3)]"
-                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-blue-500/40 hover:text-blue-300"
+                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-blue-500/40 hover:text-blue-300",
                 )}
               >
                 <Clock className="h-4 w-4" />
@@ -215,7 +248,7 @@ export function TicketDetailsModal({
                   "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
                   currentTicket.status === "APPROVED"
                     ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.3)]"
-                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-emerald-500/40 hover:text-emerald-300"
+                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-emerald-500/40 hover:text-emerald-300",
                 )}
               >
                 <CheckCircle2 className="h-4 w-4" />
@@ -229,7 +262,7 @@ export function TicketDetailsModal({
                   "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all cursor-pointer",
                   currentTicket.status === "REJECTED"
                     ? "border-red-500/50 bg-red-500/20 text-red-300 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.3)]"
-                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-red-500/40 hover:text-red-300"
+                    : "border-steel-700 bg-abyss-900 text-steel-300 hover:border-red-500/40 hover:text-red-300",
                 )}
               >
                 <XCircle className="h-4 w-4" />
@@ -267,7 +300,8 @@ export function TicketDetailsModal({
                 },
               ].map(({ id, label, icon: Icon }) => {
                 const active =
-                  (selectedResponsibility || currentTicket.suggestedResponsibility) === id;
+                  (selectedResponsibility ||
+                    currentTicket.suggestedResponsibility) === id;
                 return (
                   <button
                     key={id}
@@ -277,13 +311,13 @@ export function TicketDetailsModal({
                       "flex items-center gap-2.5 rounded-lg border p-2.5 text-xs font-semibold transition-all text-left cursor-pointer",
                       active
                         ? "border-gold-500/60 bg-gold-500/10 text-gold-200 shadow-[inset_0_0_0_1px_rgba(227,185,33,0.3)]"
-                        : "border-steel-700/60 bg-abyss-900/60 text-steel-300 hover:text-steel-100"
+                        : "border-steel-700/60 bg-abyss-900/60 text-steel-300 hover:text-steel-100",
                     )}
                   >
                     <Icon
                       className={cn(
                         "h-4 w-4 shrink-0",
-                        active ? "text-gold-400" : "text-steel-400"
+                        active ? "text-gold-400" : "text-steel-400",
                       )}
                     />
                     <span>{label}</span>
@@ -309,7 +343,8 @@ export function TicketDetailsModal({
 
             <div className="rounded-xl border border-steel-800 bg-abyss-950/40 p-4 space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-steel-500 flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5 text-gold-400" /> Nota Fiscal (DANFE)
+                <FileText className="h-3.5 w-3.5 text-gold-400" /> Nota Fiscal
+                (DANFE)
               </span>
               <p className="font-mono text-steel-100 truncate">
                 {currentTicket.nfeKey || "N/A"}
@@ -322,6 +357,30 @@ export function TicketDetailsModal({
                     : "Intacta"}
                 </strong>
               </p>
+            </div>
+
+            <div className="rounded-xl border border-steel-800 bg-abyss-950/40 p-4 space-y-2 sm:col-span-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-steel-500 flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 text-gold-400" /> Fabricante /
+                Fornecedor
+              </span>
+              {currentTicket.product?.tenant ? (
+                <>
+                  <p className="font-semibold text-steel-100">
+                    {currentTicket.product.tenant.name}
+                  </p>
+                  <p className="text-steel-400">
+                    Produto: {currentTicket.product.name}{" "}
+                    <span className="font-mono">
+                      ({currentTicket.product.sku})
+                    </span>
+                  </p>
+                </>
+              ) : (
+                <p className="text-steel-500 italic">
+                  Nenhum produto de catálogo vinculado a este chamado.
+                </p>
+              )}
             </div>
           </div>
 
@@ -367,9 +426,11 @@ export function TicketDetailsModal({
           {/* Mídias / Evidências */}
           <div className="rounded-xl border border-steel-800 bg-abyss-950/40 p-4 space-y-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-steel-400 flex items-center gap-1.5">
-              <ImageIcon className="h-3.5 w-3.5 text-gold-400" /> Evidências Anexadas ({currentTicket.mediaFiles?.length || 0})
+              <ImageIcon className="h-3.5 w-3.5 text-gold-400" /> Evidências
+              Anexadas ({currentTicket.mediaFiles?.length || 0})
             </span>
-            {!currentTicket.mediaFiles || currentTicket.mediaFiles.length === 0 ? (
+            {!currentTicket.mediaFiles ||
+            currentTicket.mediaFiles.length === 0 ? (
               <p className="text-xs text-steel-500 italic">
                 Nenhuma evidência registrada.
               </p>
@@ -381,11 +442,14 @@ export function TicketDetailsModal({
                     type="button"
                     onClick={() =>
                       openImageViewer(
-                        (currentTicket.mediaFiles ?? []).map((mf) => ({ url: mf.url, label: mf.type })),
+                        (currentTicket.mediaFiles ?? []).map((mf) => ({
+                          url: mf.url,
+                          label: mf.type,
+                        })),
                         idx,
                       )
                     }
-                   className="group relative aspect-square overflow-hidden rounded-lg border border-steel-700 bg-abyss-900 hover:border-gold-500 transition-all"
+                    className="group relative aspect-square overflow-hidden rounded-lg border border-steel-700 bg-abyss-900 hover:border-gold-500 transition-all"
                   >
                     <img
                       src={m.url}
@@ -400,27 +464,50 @@ export function TicketDetailsModal({
               </div>
             )}
           </div>
-
         </div>
 
         {/* Rodapé com Ação de Excluir e Fechar */}
         <div className="flex items-center justify-between border-t border-steel-800 bg-abyss-950 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="danger"
+              onClick={handleDeleteTicket}
+              disabled={deleting}
+              className="flex items-center gap-1.5 text-xs bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 cursor-pointer"
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Excluir Chamado
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="flex items-center gap-1.5 text-xs cursor-pointer"
+            >
+              {exportingPdf ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileDown className="h-3.5 w-3.5" />
+              )}
+              Exportar Dossiê PDF
+            </Button>
+          </div>
+
           <Button
             type="button"
-            variant="danger"
-            onClick={handleDeleteTicket}
-            disabled={deleting}
-            className="flex items-center gap-1.5 text-xs bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 cursor-pointer"
+            variant="secondary"
+            onClick={onClose}
+            className="cursor-pointer"
           >
-            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            Excluir Chamado
-          </Button>
-
-          <Button type="button" variant="secondary" onClick={onClose} className="cursor-pointer">
             Fechar
           </Button>
         </div>
-
       </div>
     </div>
   );

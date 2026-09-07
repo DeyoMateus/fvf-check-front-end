@@ -16,30 +16,34 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { useAuth } from "../../contexts/AuthContext";
-import { api } from "../../lib/api";
+import {
+  notificationsService,
+  type AppNotification,
+} from "../../services/notifications.service";
+import { cn } from "@/utils/cn";
 
 interface TopbarProps {
   onScanDanfe?: (scannedValue: string) => void;
   onNewTicket?: () => void;
   onSearch?: (query: string) => void;
+  onNotificationClick?: (ticketId: string) => void;
 }
 
-export interface RealNotification {
-  id: string;
-  title: string;
-  message: string;
-  time: string;
-  type: "delay" | "new_ticket" | "urgent";
-  read: boolean;
-}
-
-export function Topbar({ onScanDanfe, onNewTicket, onSearch }: TopbarProps) {
+export function Topbar({
+  onScanDanfe,
+  onNewTicket,
+  onSearch,
+  onNotificationClick,
+}: TopbarProps) {
   const { user, logout } = useAuth();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [notifications, setNotifications] = useState<RealNotification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifPage, setNotifPage] = useState(1);
+  const [notifHasMore, setNotifHasMore] = useState(false);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   // Estados do Modal de Leitura / Câmera
@@ -97,7 +101,9 @@ export function Topbar({ onScanDanfe, onNewTicket, onSearch }: TopbarProps) {
             const detectCode = async () => {
               if (videoRef.current && videoRef.current.readyState === 4) {
                 try {
-                  const barcodes = await barcodeDetector.detect(videoRef.current);
+                  const barcodes = await barcodeDetector.detect(
+                    videoRef.current,
+                  );
                   if (barcodes.length > 0) {
                     processDanfeCode(barcodes[0].rawValue);
                     return;
@@ -112,7 +118,9 @@ export function Topbar({ onScanDanfe, onNewTicket, onSearch }: TopbarProps) {
           }
         } catch (err) {
           console.error("Erro ao acessar câmera:", err);
-          setCameraError("Não foi possível acessar a câmera. Verifique as permissões.");
+          setCameraError(
+            "Não foi possível acessar a câmera. Verifique as permissões.",
+          );
         }
       }
     }
@@ -139,44 +147,48 @@ export function Topbar({ onScanDanfe, onNewTicket, onSearch }: TopbarProps) {
     setCameraError(null);
   };
 
-  // Carrega notificações reais
-  useEffect(() => {
-    async function fetchRealNotifications() {
-      try {
-        setLoadingNotifications(true);
-        const response = await api.get("/tickets");
-        const tickets = response.data || [];
-
-        const generated: RealNotification[] = [];
-
-        tickets.forEach((ticket: any) => {
-          if (ticket.slaHours !== undefined && ticket.slaHours <= 0 && ticket.status !== "COMPLETED") {
-            generated.push({
-              id: `delay-${ticket.id}`,
-              title: "Ticket em Atraso (SLA Excedido)",
-              message: `O chamado ${ticket.code || ticket.id} ultrapassou o tempo limite.`,
-              time: "Urgente",
-              type: "delay",
-              read: false,
-            });
-          }
-        });
-
-        setNotifications(generated);
-      } catch (error) {
-        console.error("Erro nas notificações:", error);
-      } finally {
-        setLoadingNotifications(false);
-      }
+async function loadNotifications(page: number, append: boolean) {
+   try {
+     setLoadingNotifications(true);
+     const result = await notificationsService.getPage(page, 10);
+     setNotifications((prev) => (append ? [...prev, ...result.notifications] : result.notifications));
+     setUnreadCount(result.unreadCount);
+     setNotifPage(result.pagination.page);
+     setNotifHasMore(result.pagination.hasMore);
+    } catch (error) {
+      console.error("Erro ao carregar notificações:", error);
+    } finally {
+      setLoadingNotifications(false);
     }
+  }
 
-    fetchRealNotifications();
+  useEffect(() => {
+    loadNotifications(1, false);
+    // Verifica novidades a cada 60s — simples e suficiente para o volume
+    // esperado, sem precisar de WebSocket/SSE agora.
+    const interval = setInterval(() => loadNotifications(1, false), 60_000);
+    return () => clearInterval(interval);
   }, []);
+
+  async function handleNotificationClick(n: AppNotification) {
+    if (!n.read) {
+      await notificationsService.markAsRead(n.id);
+      setNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, read: true } : item)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    }
+    if (n.ticketId && onNotificationClick) {
+      onNotificationClick(n.ticketId);
+    }
+    setNotificationsOpen(false);
+  }
 
   // Fechar menus ao clicar fora
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+      if (
+        notifRef.current &&
+        !notifRef.current.contains(event.target as Node)
+      ) {
         setNotificationsOpen(false);
       }
     }
@@ -184,9 +196,13 @@ export function Topbar({ onScanDanfe, onNewTicket, onSearch }: TopbarProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
   const userInitials = user?.name
-    ? user.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
     : "US";
 
   return (
@@ -277,23 +293,47 @@ export function Topbar({ onScanDanfe, onNewTicket, onSearch }: TopbarProps) {
                       <p className="text-xs">Nenhum alerta pendente.</p>
                     </div>
                   ) : (
-                    notifications.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-start gap-3 rounded-lg p-2.5 bg-abyss-800/80 border border-steel-700/40 text-steel-200"
-                      >
-                        <Clock className="h-4 w-4 text-gold-400 shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold text-steel-100">{item.title}</p>
-                          <p className="text-[11px] text-steel-300 mt-0.5">{item.message}</p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+                   <>
+                     {notifications.map((item) => (
+                       <button
+                         key={item.id}
+                         onClick={() => handleNotificationClick(item)}
+                         className={cn(
+                           "flex w-full items-start gap-3 rounded-lg p-2.5 text-left border transition-colors",
+                           item.read
+                             ? "bg-abyss-800/40 border-steel-700/30 text-steel-400"
+                             : "bg-abyss-800/80 border-gold-500/30 text-steel-200",
+                         )}
+                       >
+                         {!item.read && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-400" />}
+                         <Clock className={cn("h-4 w-4 shrink-0 mt-0.5", item.read ? "text-steel-500" : "text-gold-400")} />
+                         <div className="flex-1 min-w-0">
+                           <p className={cn("text-xs font-semibold", item.read ? "text-steel-300" : "text-steel-100")}>
+                             {item.title}
+                           </p>
+                           <p className="text-[11px] mt-0.5">{item.message}</p>
+                           <p className="mt-1 text-[10px] text-steel-500">
+                             {new Date(item.createdAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                           </p>
+                         </div>
+                       </button>
+                     ))}
+                     {notifHasMore && (
+                       <button
+                         onClick={() => loadNotifications(notifPage + 1, true)}
+                         disabled={loadingNotifications}
+                         className="w-full py-2 text-center text-[11px] font-semibold text-gold-300 hover:underline"
+                       >
+                         {loadingNotifications ? "Carregando..." : "Carregar mais"}
+                       </button>
+                     )}
+                   </>
+                   )}
+                 </div>
+                
           </div>
+            )}
+
 
           {/* Menu de Usuário */}
           <div className="relative">
@@ -306,8 +346,12 @@ export function Topbar({ onScanDanfe, onNewTicket, onSearch }: TopbarProps) {
                 {userInitials}
               </div>
               <div className="hidden text-left md:block">
-                <p className="text-xs font-semibold text-steel-100">{user?.name || "Usuário"}</p>
-                <p className="text-[10px] text-steel-400">{user?.role || "Operador"}</p>
+                <p className="text-xs font-semibold text-steel-100">
+                  {user?.name || "Usuário"}
+                </p>
+                <p className="text-[10px] text-steel-400">
+                  {user?.role || "Operador"}
+                </p>
               </div>
               <ChevronDown className="h-3.5 w-3.5 text-steel-400" />
             </button>
@@ -339,7 +383,9 @@ export function Topbar({ onScanDanfe, onNewTicket, onSearch }: TopbarProps) {
             <div className="flex items-center justify-between border-b border-steel-800 pb-3">
               <div className="flex items-center gap-2">
                 <Barcode className="h-5 w-5 text-gold-400" />
-                <h3 className="font-bold text-sm text-steel-50">Escanear / Identificar DANFE</h3>
+                <h3 className="font-bold text-sm text-steel-50">
+                  Escanear / Identificar DANFE
+                </h3>
               </div>
               <button
                 type="button"
@@ -433,7 +479,11 @@ export function Topbar({ onScanDanfe, onNewTicket, onSearch }: TopbarProps) {
                 </div>
 
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" type="button" onClick={closeScanModal}>
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={closeScanModal}
+                  >
                     Cancelar
                   </Button>
                   <Button type="submit" disabled={!manualCode.trim()}>

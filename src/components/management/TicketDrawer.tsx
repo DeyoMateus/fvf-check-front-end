@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { X, MessageSquare, Paperclip, Camera, Truck, Factory, Wrench, CheckCircle2, ChevronDown } from "lucide-react";
+import {
+  X,
+  MessageSquare,
+  Paperclip,
+  Camera,
+  Truck,
+  Factory,
+  Wrench,
+  CheckCircle2,
+  FileDown,
+  ChevronDown,
+  Loader2,
+} from "lucide-react";
 import { TriageScoreMeter } from "../domain/TriageScoreMeter";
 import { SeverityBadge } from "../domain/SeverityBadge";
 import { SlaIndicator } from "../domain/SlaIndicator";
@@ -19,13 +31,17 @@ import {
   type TicketStatus,
   type ClaimStatus,
   type RmaStatus,
-  type TicketEvent
+  type TicketEvent,
 } from "../../services/tickets.service";
+import { toast } from "sonner";
 
 export interface TicketDrawerProps {
   ticket: Ticket | null;
   onClose: () => void;
-  onStatusChange?: (ticketId: string, newStatus: TicketStatus) => Promise<void> | void;
+  onStatusChange?: (
+    ticketId: string,
+    newStatus: TicketStatus,
+  ) => Promise<void> | void;
   onAddComment?: (ticketId: string, comment: string) => Promise<void> | void;
   onTriggerAction?: (actionType: string, ticketId: string) => void;
   onRefreshTicket?: () => void;
@@ -47,7 +63,11 @@ function extractPartDetails(part: TicketPart) {
   const partCode = String(raw.partCode || raw.code || raw.sku || "Sem código");
 
   const partName = String(
-    raw.partName || raw.descricao || raw.name || raw.title || `Peça (${partCode})`
+    raw.partName ||
+      raw.descricao ||
+      raw.name ||
+      raw.title ||
+      `Peça (${partCode})`,
   );
 
   const score =
@@ -67,11 +87,14 @@ function extractPartDetails(part: TicketPart) {
         ? (raw.evidencias as unknown[])
         : [];
 
-  const evidenceCount = mediaList.length > 0
-    ? mediaList.length
-    : Number(raw.evidenceCount || raw.evidencia || 0);
+  const evidenceCount =
+    mediaList.length > 0
+      ? mediaList.length
+      : Number(raw.evidenceCount || raw.evidencia || 0);
 
-  const defectType = String(raw.defectType || raw.defeito || raw.type || "Geral");
+  const defectType = String(
+    raw.defectType || raw.defeito || raw.type || "Geral",
+  );
 
   return {
     partCode,
@@ -90,25 +113,28 @@ export function TicketDrawer({
   onAddComment,
   onTriggerAction,
   onRefreshTicket,
-  onViewEvidence
+  onViewEvidence,
 }: TicketDrawerProps) {
   const [isCommenting, setIsCommenting] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isSchedulingVisit, setIsSchedulingVisit] = useState(false);
   const [isHandlingClaim, setIsHandlingClaim] = useState(false);
   const [isHandlingRma, setIsHandlingRma] = useState(false);
-  const [isHandlingReverseLogistics, setIsHandlingReverseLogistics] = useState(false);
+  const [isHandlingReverseLogistics, setIsHandlingReverseLogistics] =
+    useState(false);
 
   const actionPanelRef = useRef<HTMLElement>(null);
   const { open: openImageViewer } = useImageViewer();
   const [selectedNewStatus, setSelectedNewStatus] = useState<TicketStatus>(
-    ticket?.status || "UNDER_REVIEW"
+    ticket?.status || "UNDER_REVIEW",
   );
   const [commentText, setCommentText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Visita Técnica
-  const [assemblers, setAssemblers] = useState<{ id: string; name: string }[]>([]);
+  const [assemblers, setAssemblers] = useState<{ id: string; name: string }[]>(
+    [],
+  );
   const [selectedAssemblerId, setSelectedAssemblerId] = useState("");
   const [selectedVisitDateTime, setSelectedVisitDateTime] = useState("");
 
@@ -122,6 +148,8 @@ export function TicketDrawer({
   const [rmaNumber, setRmaNumber] = useState("");
   const [responseDueAt, setResponseDueAt] = useState("");
   const [rmaStatus, setRmaStatus] = useState<RmaStatus>("REQUESTED");
+
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     ticketsService.getAssemblers().then(setAssemblers);
@@ -142,8 +170,10 @@ export function TicketDrawer({
         setRmaNumber(ticket.factoryRma.rmaNumber);
         setResponseDueAt(
           ticket.factoryRma.responseDueAt
-            ? new Date(ticket.factoryRma.responseDueAt).toISOString().slice(0, 16)
-            : ""
+            ? new Date(ticket.factoryRma.responseDueAt)
+                .toISOString()
+                .slice(0, 16)
+            : "",
         );
         setRmaStatus(ticket.factoryRma.status as RmaStatus);
       }
@@ -159,18 +189,37 @@ export function TicketDrawer({
   }, [onClose]);
 
   useEffect(() => {
-    if (isChangingStatus || isCommenting || isSchedulingVisit || isHandlingClaim || isHandlingRma) {
-      actionPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (
+      isChangingStatus ||
+      isCommenting ||
+      isSchedulingVisit ||
+      isHandlingClaim ||
+      isHandlingRma
+    ) {
+      actionPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     }
-  }, [isChangingStatus, isCommenting, isSchedulingVisit, isHandlingClaim, isHandlingRma]);
+  }, [
+    isChangingStatus,
+    isCommenting,
+    isSchedulingVisit,
+    isHandlingClaim,
+    isHandlingRma,
+  ]);
 
   if (!ticket) return null;
 
   const displayCode = ticket.code || ticket.id;
   const displayCustomer = ticket.customerName || "Cliente não informado";
   const displayCity = ticket.cityName || "Não especificada";
-  const displayNfe = ticket.nfeKey ? `NF-e ${ticket.nfeKey.slice(0, 8)}...` : "Sem NF-e";
-  const displayBatch = ticket.batchNumber ? `Lote ${ticket.batchNumber}` : "Sem lote";
+  const displayNfe = ticket.nfeKey
+    ? `NF-e ${ticket.nfeKey.slice(0, 8)}...`
+    : "Sem NF-e";
+  const displayBatch = ticket.batchNumber
+    ? `Lote ${ticket.batchNumber}`
+    : "Sem lote";
   const partsList = ticket.parts ?? [];
 
   const resetPanels = () => {
@@ -242,11 +291,13 @@ export function TicketDrawer({
       if (ticket.factoryRma) {
         await ticketsService.updateRmaStatus(ticket.id, rmaStatus);
       } else {
-        if (!rmaNumber) return;
         await ticketsService.requestRma(ticket.id, {
-          rmaNumber,
-          responseDueAt: responseDueAt ? new Date(responseDueAt).toISOString() : undefined,
+          responseDueAt: responseDueAt
+            ? new Date(responseDueAt).toISOString()
+            : undefined,
         });
+
+        toast.success("RMA gerado e endereçado à Fábrica fornecedora.");
       }
       setIsHandlingRma(false);
       onRefreshTicket?.();
@@ -272,9 +323,24 @@ export function TicketDrawer({
         {/* Header */}
         <header className="flex items-start justify-between gap-3 border-b border-steel-700/40 p-5">
           <div>
-            <p className="font-mono text-xs font-bold text-gold-400">{displayCode}</p>
-            <h2 className="mt-1 text-lg font-semibold text-steel-50">{displayCustomer}</h2>
+            <p className="font-mono text-xs font-bold text-gold-400">
+              {displayCode}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-steel-50">
+              {displayCustomer}
+            </h2>
             <p className="text-xs text-steel-400">{displayCity}</p>
+
+            {ticket.product?.tenant && (
+              <p className="mt-1 flex items-center gap-1.5 text-[11px] text-steel-400">
+                <Factory className="h-3 w-3 text-gold-400" />
+                Fabricante:{" "}
+                <span className="font-semibold text-gold-300">
+                  {ticket.product.tenant.name}
+                </span>
+              </p>
+            )}
+
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <SeverityBadge value={ticket.severity ?? "MEDIUM"} />
               <SlaIndicator hours={ticket.slaHours ?? 24} />
@@ -292,12 +358,10 @@ export function TicketDrawer({
         </header>
 
         <div className="flex-1 space-y-6 overflow-y-auto p-5">
-
           <EmergencyStatusBanner
             ticketId={ticket.id}
             isEmergencyMode={ticket.isEmergencyMode}
           />
-
 
           {/* Triage Score */}
           <section>
@@ -311,7 +375,8 @@ export function TicketDrawer({
                 <span className="font-semibold text-gold-300">
                   {topLabel(ticket)}
                 </span>{" "}
-                com base em evidências fotográficas, padrão do lote e histórico do montador.
+                com base em evidências fotográficas, padrão do lote e histórico
+                do montador.
               </p>
             </div>
           </section>
@@ -332,9 +397,13 @@ export function TicketDrawer({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-steel-100">{part.partName}</p>
+                        <p className="font-semibold text-steel-100">
+                          {part.partName}
+                        </p>
                         <p className="mt-0.5 text-[11px] text-steel-400">
-                          Código: <span className="font-mono">{part.partCode}</span> | Defeito: {part.defectType}
+                          Código:{" "}
+                          <span className="font-mono">{part.partCode}</span> |
+                          Defeito: {part.defectType}
                         </p>
                       </div>
                       <div className="text-right">
@@ -349,14 +418,20 @@ export function TicketDrawer({
                     <div className="mt-3 flex items-center justify-between border-t border-steel-700/40 pt-3 text-[11px] text-steel-400">
                       <span className="inline-flex items-center gap-1.5">
                         <Camera className="h-3 w-3" />
-                        {part.evidenceCount} foto{part.evidenceCount !== 1 && "s"}
+                        {part.evidenceCount} foto
+                        {part.evidenceCount !== 1 && "s"}
                       </span>
                       <button
                         onClick={() => {
-                          const images = (ticket.mediaFiles ?? []).map((m) => ({
-                            url: m.url,
-                            label: m.type,
-                          }));
+                          const ownMedia = part.mediaList as unknown as {
+                            url: string;
+                            type?: string;
+                          }[];
+                          const images = (
+                            ownMedia.length > 0
+                              ? ownMedia
+                              : (ticket.mediaFiles ?? [])
+                          ).map((m: any) => ({ url: m.url, label: m.type }));
                           if (onViewEvidence) onViewEvidence(p);
                           else if (images.length) openImageViewer(images, 0);
                         }}
@@ -414,7 +489,9 @@ export function TicketDrawer({
                 }
                 tone="info"
                 onClick={() => {
-                  setSelectedAssemblerId(ticket.technicalVisit?.assemblerId ?? "");
+                  setSelectedAssemblerId(
+                    ticket.technicalVisit?.assemblerId ?? "",
+                  );
                   resetPanels();
                   setIsSchedulingVisit(!isSchedulingVisit);
                 }}
@@ -444,7 +521,9 @@ export function TicketDrawer({
               className="rounded-xl border border-gold-500/30 bg-abyss-900/80 p-4 animate-in fade-in duration-200 space-y-3"
             >
               <h4 className="text-xs font-bold text-gold-300">
-                {ticket.transportClaim ? "Atualizar Sinistro" : "Abrir Sinistro c/ Transportadora"}
+                {ticket.transportClaim
+                  ? "Atualizar Sinistro"
+                  : "Abrir Sinistro c/ Transportadora"}
               </h4>
               {!ticket.transportClaim ? (
                 <>
@@ -473,7 +552,9 @@ export function TicketDrawer({
               ) : (
                 <select
                   value={claimStatus}
-                  onChange={(e) => setClaimStatus(e.target.value as ClaimStatus)}
+                  onChange={(e) =>
+                    setClaimStatus(e.target.value as ClaimStatus)
+                  }
                   className="w-full rounded-lg border border-steel-700 bg-abyss-950 p-2 text-xs text-steel-100 focus:border-gold-400 focus:outline-none cursor-pointer"
                 >
                   {Object.entries(CLAIM_STATUS_LABELS).map(([val, lbl]) => (
@@ -484,13 +565,20 @@ export function TicketDrawer({
                 </select>
               )}
               <div className="flex justify-end gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setIsHandlingClaim(false)}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsHandlingClaim(false)}
+                >
                   Cancelar
                 </Button>
                 <Button
                   size="sm"
                   onClick={handleSaveClaim}
-                  disabled={isSubmitting || (!ticket.transportClaim && (!carrierName || !claimNumber))}
+                  disabled={
+                    isSubmitting ||
+                    (!ticket.transportClaim && (!carrierName || !claimNumber))
+                  }
                 >
                   {isSubmitting ? "Salvando..." : "Salvar Sinistro"}
                 </Button>
@@ -505,21 +593,21 @@ export function TicketDrawer({
               className="rounded-xl border border-gold-500/30 bg-abyss-900/80 p-4 animate-in fade-in duration-200 space-y-3"
             >
               <h4 className="text-xs font-bold text-gold-300">
-                {ticket.factoryRma ? "Atualizar RMA" : "Solicitar RMA à Fábrica"}
+                {ticket.factoryRma
+                  ? "Atualizar RMA"
+                  : "Solicitar RMA à Fábrica"}
               </h4>
               {!ticket.factoryRma ? (
                 <>
-                  <input
-                    type="text"
-                    placeholder="Número do RMA"
-                    value={rmaNumber}
-                    onChange={(e) => setRmaNumber(e.target.value)}
-                    className="w-full rounded-lg border border-steel-700 bg-abyss-950 p-2 text-xs text-steel-100 focus:border-gold-400 focus:outline-none"
-                  />
+                  <p className="text-[11px] text-steel-400">
+                    O número do RMA será gerado automaticamente e endereçado ao
+                    Administrador da Fábrica fornecedora.
+                  </p>
                   <input
                     type="datetime-local"
                     value={responseDueAt}
                     onChange={(e) => setResponseDueAt(e.target.value)}
+                    placeholder="Prazo de resposta (opcional)"
                     className="w-full rounded-lg border border-steel-700 bg-abyss-950 p-2 text-xs text-steel-100 focus:border-gold-400 focus:outline-none"
                   />
                 </>
@@ -537,7 +625,11 @@ export function TicketDrawer({
                 </select>
               )}
               <div className="flex justify-end gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setIsHandlingRma(false)}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsHandlingRma(false)}
+                >
                   Cancelar
                 </Button>
                 <Button
@@ -550,7 +642,7 @@ export function TicketDrawer({
               </div>
             </section>
           )}
-          
+
           {isHandlingReverseLogistics && (
             <ReverseLogisticsPanel
               ticket={ticket}
@@ -580,7 +672,11 @@ export function TicketDrawer({
                 ))
               ) : (
                 <>
-                  <TimelineItem when="há 2h" who="Sistema" desc="DANFE lido e ticket criado." />
+                  <TimelineItem
+                    when="há 2h"
+                    who="Sistema"
+                    desc="DANFE lido e ticket criado."
+                  />
                   <TimelineItem
                     when="há 1h"
                     who="IA de Visão"
@@ -603,11 +699,15 @@ export function TicketDrawer({
               ref={actionPanelRef}
               className="rounded-xl border border-gold-500/30 bg-abyss-900/80 p-4 animate-in fade-in duration-200"
             >
-              <h4 className="text-xs font-bold text-gold-300 mb-2">Selecione o Novo Status do Ticket</h4>
+              <h4 className="text-xs font-bold text-gold-300 mb-2">
+                Selecione o Novo Status do Ticket
+              </h4>
               <div className="space-y-3">
                 <select
                   value={selectedNewStatus}
-                  onChange={(e) => setSelectedNewStatus(e.target.value as TicketStatus)}
+                  onChange={(e) =>
+                    setSelectedNewStatus(e.target.value as TicketStatus)
+                  }
                   className="w-full rounded-lg border border-steel-700 bg-abyss-950 p-2 text-xs text-steel-100 focus:border-gold-400 focus:outline-none cursor-pointer"
                 >
                   {AVAILABLE_STATUSES.map((st) => (
@@ -617,10 +717,18 @@ export function TicketDrawer({
                   ))}
                 </select>
                 <div className="flex justify-end gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => setIsChangingStatus(false)}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setIsChangingStatus(false)}
+                  >
                     Cancelar
                   </Button>
-                  <Button size="sm" onClick={handleConfirmStatusChange} disabled={isSubmitting}>
+                  <Button
+                    size="sm"
+                    onClick={handleConfirmStatusChange}
+                    disabled={isSubmitting}
+                  >
                     {isSubmitting ? "Atualizando..." : "Confirmar Alteração"}
                   </Button>
                 </div>
@@ -634,7 +742,9 @@ export function TicketDrawer({
               ref={actionPanelRef}
               className="rounded-xl border border-gold-500/30 bg-abyss-900/80 p-4 animate-in fade-in duration-200"
             >
-              <h4 className="text-xs font-bold text-gold-300 mb-2">Adicionar Nota de Auditoria</h4>
+              <h4 className="text-xs font-bold text-gold-300 mb-2">
+                Adicionar Nota de Auditoria
+              </h4>
               <textarea
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
@@ -643,10 +753,18 @@ export function TicketDrawer({
                 rows={3}
               />
               <div className="mt-2 flex justify-end gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setIsCommenting(false)}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsCommenting(false)}
+                >
                   Cancelar
                 </Button>
-                <Button size="sm" onClick={handleSaveComment} disabled={isSubmitting}>
+                <Button
+                  size="sm"
+                  onClick={handleSaveComment}
+                  disabled={isSubmitting}
+                >
                   {isSubmitting ? "Salvando..." : "Salvar Nota"}
                 </Button>
               </div>
@@ -659,7 +777,9 @@ export function TicketDrawer({
               ref={actionPanelRef}
               className="rounded-xl border border-gold-500/30 bg-abyss-900/80 p-4 animate-in fade-in duration-200"
             >
-              <h4 className="text-xs font-bold text-gold-300 mb-2">Agendar Visita Técnica</h4>
+              <h4 className="text-xs font-bold text-gold-300 mb-2">
+                Agendar Visita Técnica
+              </h4>
               <div className="space-y-3">
                 <select
                   value={selectedAssemblerId}
@@ -668,7 +788,9 @@ export function TicketDrawer({
                 >
                   <option value="">Selecione o montador...</option>
                   {assemblers.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
                   ))}
                 </select>
                 <input
@@ -679,18 +801,32 @@ export function TicketDrawer({
                 />
                 {ticket.technicalVisit?.status && (
                   <p className="text-[11px] text-steel-400">
-                    Status atual: <span className="font-semibold text-gold-300">
-                      {VISIT_STATUS_LABELS[ticket.technicalVisit.status as keyof typeof VISIT_STATUS_LABELS]}
+                    Status atual:{" "}
+                    <span className="font-semibold text-gold-300">
+                      {
+                        VISIT_STATUS_LABELS[
+                          ticket.technicalVisit
+                            .status as keyof typeof VISIT_STATUS_LABELS
+                        ]
+                      }
                     </span>
                   </p>
                 )}
                 <div className="flex justify-end gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => setIsSchedulingVisit(false)}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setIsSchedulingVisit(false)}
+                  >
                     Cancelar
                   </Button>
                   <Button
                     size="sm"
-                    disabled={isSubmitting || !selectedAssemblerId || !selectedVisitDateTime}
+                    disabled={
+                      isSubmitting ||
+                      !selectedAssemblerId ||
+                      !selectedVisitDateTime
+                    }
                     onClick={async () => {
                       try {
                         setIsSubmitting(true);
@@ -730,14 +866,36 @@ export function TicketDrawer({
             <MessageSquare className="h-4 w-4" />
             Comentar
           </Button>
+
           <Button
             variant="secondary"
             className="flex-1 cursor-pointer text-xs"
-            onClick={() => onTriggerAction?.("ATTACH_DANFE", ticket.id)}
+            disabled={exportingPdf}
+            onClick={async () => {
+              try {
+                setExportingPdf(true);
+                const blob = await ticketsService.exportDossierPdf(ticket.id);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `dossie-${ticket.code || ticket.id}.pdf`;
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch (err) {
+                console.error("Erro ao exportar dossiê:", err);
+              } finally {
+                setExportingPdf(false);
+              }
+            }}
           >
-            <Paperclip className="h-4 w-4" />
-            Anexar NF-e
+            {exportingPdf ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="h-4 w-4" />
+            )}
+            Dossiê PDF
           </Button>
+
           <Button
             className="flex-1 cursor-pointer text-xs"
             onClick={() => {
@@ -814,8 +972,9 @@ function TimelineItem({
   return (
     <li className="relative">
       <span
-        className={`absolute -left-[21px] top-1.5 h-3 w-3 rounded-full border-2 border-abyss-950 ${current ? "bg-gold-400" : "bg-steel-500"
-          }`}
+        className={`absolute -left-[21px] top-1.5 h-3 w-3 rounded-full border-2 border-abyss-950 ${
+          current ? "bg-gold-400" : "bg-steel-500"
+        }`}
       />
       <p className="text-[10px] font-bold uppercase tracking-widest text-steel-500">
         {when} • {who}

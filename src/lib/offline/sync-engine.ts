@@ -33,6 +33,13 @@ async function syncSingleTicket(localId: string): Promise<void> {
     const created = await ticketsService.create(ticket.payload);
     if (!created?.id) throw new Error("Servidor não retornou ID do chamado.");
 
+    // Mapeia partCode -> id real da peça, criada agora no servidor,
+    // para conseguir vincular corretamente cada foto à peça certa.
+    const partIdByCode = new Map<string, string>();
+    for (const p of created.parts ?? []) {
+      partIdByCode.set(p.partCode, p.id);
+    }
+
     // 2. Sobe cada mídia pendente vinculada a esse ticket local
     const mediaItems = await listMediaForTicket(localId);
     for (const media of mediaItems) {
@@ -44,6 +51,10 @@ async function syncSingleTicket(localId: string): Promise<void> {
         const uploaded = await ticketsService.uploadFileToR2(file, created.id!);
         if (!uploaded) throw new Error("Falha no upload para o R2.");
 
+        const ticketPartId = media.partCode
+          ? partIdByCode.get(media.partCode)
+          : undefined;
+
         await ticketsService.confirmMedia({
           ticketId: created.id!,
           objectKey: uploaded.objectKey,
@@ -51,6 +62,7 @@ async function syncSingleTicket(localId: string): Promise<void> {
           capturedAt: media.capturedAt,
           latitude: media.latitude,
           longitude: media.longitude,
+          ticketPartId,
         });
 
         await updateMediaStatus(media.id, { status: "synced" });

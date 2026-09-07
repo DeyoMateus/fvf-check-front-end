@@ -101,6 +101,7 @@ export const ticketsService = {
       cityName: item.invoice?.customer?.address?.city,
       nfeKey: item.invoice?.nfeKey,
       batchNumber: item.invoice?.batchNumber,
+      product: item.product ?? null,
       packageCondition: item.packageCondition,
       parts: (item.parts ?? []).map((p: any) => ({
         ...p,
@@ -239,8 +240,10 @@ export const ticketsService = {
   async getAssemblers(): Promise<{ id: string; name: string }[]> {
     try {
       const response =
-        await api.get<{ id: string; name: string }[]>("/users/assemblers");
-      return response.data;
+        await api.get<{ id: string; name: string; role: string }[]>(
+          "/users/team",
+        );
+      return response.data.filter((m) => m.role === "ASSEMBLER");
     } catch {
       return [];
     }
@@ -285,7 +288,7 @@ export const ticketsService = {
 
   async requestRma(
     ticketId: string,
-    data: { rmaNumber: string; responseDueAt?: string },
+    data: { responseDueAt?: string },
   ): Promise<FactoryRma> {
     const response = await api.patch<{ message: string; rma: FactoryRma }>(
       `/tickets/${ticketId}/rma`,
@@ -329,6 +332,13 @@ export const ticketsService = {
       };
     }>(`/tickets/${ticketId}/reverse-logistics`, { decision });
     return response.data.ticket;
+  },
+
+  async exportDossierPdf(ticketId: string): Promise<Blob> {
+    const response = await api.get(`/tickets/${ticketId}/export/pdf`, {
+      responseType: "blob",
+    });
+    return response.data;
   },
 
   async getTrash(): Promise<{ trash: TrashedTicket[]; retentionDays: number }> {

@@ -131,7 +131,7 @@ export function TicketsPage({ externalQuery }: TicketsPageProps) {
         actions={
           <Button onClick={() => setIsCreateOpen(true)}>
             <Plus className="h-4 w-4" />
-            Novo Chamado
+            Novo Ticket
           </Button>
         }
       />

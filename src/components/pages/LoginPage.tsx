@@ -3,33 +3,37 @@ import { KeyRound, Mail, LogIn, AlertCircle, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../ui/Button";
 
-export function LoginPage() {
+interface LoginPageProps {
+  onForgotPassword: () => void;
+}
+
+export function LoginPage({ onForgotPassword }: LoginPageProps) {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-async function handleSubmit(e: React.FormEvent) {
-  e.preventDefault();
-  setError(null);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
 
-  if (!email || !password) {
-    setError("Preencha todos os campos para continuar.");
-    return;
-  }
+    if (!email || !password) {
+      setError("Preencha todos os campos para continuar.");
+      return;
+    }
 
-  try {
-    setSubmitting(true);
-    // ✅ Agora enviamos 'password' que condiz com o Zod do Fastify
-    await login({ email: email.trim(), password });
-  } catch (err: unknown) {
-    console.error(err);
-    setError("Credenciais inválidas. Verifique seu e-mail e senha.");
-  } finally {
-    setSubmitting(false);
+    try {
+      setSubmitting(true);
+      // ✅ Agora enviamos 'password' que condiz com o Zod do Fastify
+      await login({ email: email.trim(), password });
+    } catch (err: unknown) {
+      console.error(err);
+      setError("Credenciais inválidas. Verifique seu e-mail e senha.");
+    } finally {
+      setSubmitting(false);
+    }
   }
-}
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-abyss-950 p-4 text-steel-100">
@@ -80,9 +84,18 @@ async function handleSubmit(e: React.FormEvent) {
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-bold uppercase tracking-[0.18em] text-steel-400">
-              Senha de Acesso
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-[10px] font-bold uppercase tracking-[0.18em] text-steel-400">
+                Senha de Acesso
+              </label>
+              <button
+                type="button"
+                onClick={onForgotPassword}
+                className="text-[10px] font-semibold text-gold-400 hover:underline"
+              >
+                Esqueci minha senha
+              </button>
+            </div>
             <div className="relative">
               <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-steel-500">
                 <KeyRound className="h-4 w-4" />

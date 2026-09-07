@@ -6,6 +6,8 @@ import { cn } from "../../utils/cn";
 import { settingsService } from "../../services/settings.Service";
 import { useAuth } from "../../contexts/AuthContext";
 import { formatUserRole } from "../../utils/formatters";
+import { authService } from "../../services/auth.service";
+import { KeyRound, Check as CheckIcon } from "lucide-react";
 
 type Section = "perfil" | "empresa";
 
@@ -32,6 +34,44 @@ export function ConfiguracoesPage() {
   const [empresa, setEmpresa] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [timezone, setTimezone] = useState("America/Sao_Paulo");
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(false);
+
+    if (newPassword.length < 8) {
+      setPasswordError("A nova senha deve ter no mínimo 8 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError("As senhas não coincidem.");
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+      await authService.changePassword(currentPassword, newPassword);
+      setPasswordSuccess(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (err: any) {
+      setPasswordError(
+        err?.response?.data?.message || "Não foi possível alterar a senha.",
+      );
+    } finally {
+      setChangingPassword(false);
+    }
+  }
 
   useEffect(() => {
     async function loadSettings() {
@@ -92,7 +132,11 @@ export function ConfiguracoesPage() {
         description="Preferências da conta e dados da operação."
         actions={
           <Button onClick={salvar} disabled={loading}>
-            {saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+            {saved ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
             {saved ? "Salvo" : loading ? "Salvando..." : "Salvar alterações"}
           </Button>
         }
@@ -115,7 +159,12 @@ export function ConfiguracoesPage() {
                     : "text-steel-300 hover:bg-abyss-800/60 hover:text-steel-100",
                 )}
               >
-                <Icon className={cn("h-4 w-4", active ? "text-gold-300" : "text-steel-400")} />
+                <Icon
+                  className={cn(
+                    "h-4 w-4",
+                    active ? "text-gold-300" : "text-steel-400",
+                  )}
+                />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold">{s.label}</p>
                   <p className="text-[10px] text-steel-500">{s.desc}</p>
@@ -136,19 +185,28 @@ export function ConfiguracoesPage() {
                   {avatarInitials}
                 </div>
                 <div>
-                  <p className="font-semibold text-steel-50">{nome || user?.name}</p>
-                  <p className="text-xs text-steel-400">{formatUserRole(user?.role)}</p>
-                  <Button variant="outline" size="sm" className="mt-2">
-                    Alterar foto
-                  </Button>
+                  <p className="font-semibold text-steel-50">
+                    {nome || user?.name}
+                  </p>
+                  <p className="text-xs text-steel-400">
+                    {formatUserRole(user?.role)}
+                  </p>
                 </div>
               </div>
               <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Nome completo">
-                  <input className={inputCls} value={nome} onChange={(e) => setNome(e.target.value)} />
+                  <input
+                    className={inputCls}
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                  />
                 </Field>
                 <Field label="E-mail corporativo">
-                  <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <input
+                    className={inputCls}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </Field>
                 <Field label="Função / Nível de Acesso">
                   <input
@@ -164,13 +222,69 @@ export function ConfiguracoesPage() {
                     value={timezone}
                     onChange={(e) => setTimezone(e.target.value)}
                   >
-                    <option value="America/Sao_Paulo">America/São Paulo (BRT)</option>
+                    <option value="America/Sao_Paulo">
+                      America/São Paulo (BRT)
+                    </option>
                     <option value="America/Manaus">America/Manaus (AMT)</option>
-                    <option value="America/Fortaleza">America/Fortaleza (BRT)</option>
+                    <option value="America/Fortaleza">
+                      America/Fortaleza (BRT)
+                    </option>
                   </select>
                 </Field>
               </div>
             </SectionBlock>
+          )}
+
+          {section === "perfil" && (
+            <div className="mt-6 border-t border-steel-800 pt-5">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-400 flex items-center gap-1.5">
+                <KeyRound className="h-3.5 w-3.5" /> Alterar Senha
+              </p>
+              <form
+                onSubmit={handleChangePassword}
+                className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3"
+              >
+                <Field label="Senha atual">
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Nova senha">
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Confirmar nova senha">
+                  <input
+                    type="password"
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <div className="sm:col-span-3 flex items-center gap-3">
+                  <Button type="submit" disabled={changingPassword} size="sm">
+                    {changingPassword ? "Alterando..." : "Alterar Senha"}
+                  </Button>
+                  {passwordSuccess && (
+                    <span className="text-xs text-emerald-400">
+                      Senha alterada com sucesso!
+                    </span>
+                  )}
+                  {passwordError && (
+                    <span className="text-xs text-red-400">
+                      {passwordError}
+                    </span>
+                  )}
+                </div>
+              </form>
+            </div>
           )}
 
           {section === "empresa" && (
@@ -202,7 +316,7 @@ export function ConfiguracoesPage() {
                   </select>
                 </Field>
                 <Field label="Unidades">
-                  <input className={inputCls} defaultValue="12 lojas + 1 CD" />
+                  <input className={inputCls} defaultValue="12 lojas 1 CD" />
                 </Field>
               </div>
             </SectionBlock>

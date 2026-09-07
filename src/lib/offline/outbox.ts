@@ -35,6 +35,7 @@ export async function enqueueMedia(
   blob: Blob,
   mediaType: MediaType,
   meta: { capturedAt: string; latitude?: number; longitude?: number },
+  partCode?: string,
 ): Promise<OutboxMedia> {
   const db = await getOfflineDB();
   const record: OutboxMedia = {
@@ -44,6 +45,7 @@ export async function enqueueMedia(
     blob,
     mediaType,
     status: "pending",
+    partCode,
     ...meta,
   };
   await db.add("outbox_media", record);

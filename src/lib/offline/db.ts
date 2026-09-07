@@ -28,6 +28,11 @@ export interface OutboxMedia {
   longitude?: number;
   status: OutboxStatus;
   errorMessage?: string;
+
+  // Se preenchido, essa mídia pertence a uma peça específica adicionada
+  // ao ticket (identificada pelo partCode, já que o servidor ainda não
+  // gerou o ticketPartId real enquanto o registro está offline).
+  partCode?: string;
 }
 
 interface FvfOfflineDB extends DBSchema {

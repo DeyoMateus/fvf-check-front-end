@@ -8,7 +8,7 @@ import {
   Loader2,
   Mail,
 } from "lucide-react";
-import { montadoresService, type Montador } from "../../services/montadores.service";
+import { teamService, type TeamMember } from "../../services/team.service";
 import { PageHeader } from "../ui/PageHeader";
 import { Stat } from "../ui/Stat";
 import { Badge } from "../ui/Badge";
@@ -19,9 +19,12 @@ import { EmptyState } from "../ui/EmptyState";
 import { cn } from "../../utils/cn";
 
 type FilterStatus = "TODOS" | "ATIVO" | "INATIVO";
+type FilterRole = "TODOS" | "ASSEMBLER" | "ANALYST";
 
-export function MontadoresPage() {
-  const [montadores, setMontadores] = useState<Montador[]>([]);
+export function EquipePage() {
+  const [membros, setMembros] = useState<TeamMember[]>([]);
+  const [roleFilter, setRoleFilter] = useState<FilterRole>("TODOS");
+  const [newRole, setNewRole] = useState<"ASSEMBLER" | "ANALYST">("ASSEMBLER");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterStatus>("TODOS");
@@ -35,10 +38,10 @@ export function MontadoresPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const data = await montadoresService.getAll();
-      setMontadores(data);
+      const data = await teamService.getAll();
+      setMembros(data);
     } catch (error) {
-      console.error("Erro ao carregar montadores:", error);
+      console.error("Erro ao carregar equipe:", error);
     } finally {
       setLoading(false);
     }
@@ -48,51 +51,65 @@ export function MontadoresPage() {
     loadData();
   }, []);
 
-  async function handleCreateAssembler(e: React.FormEvent) {
+  async function handleCreateMember(e: React.FormEvent) {
     e.preventDefault();
     try {
       setSubmitting(true);
-      await montadoresService.create({
-        name: newName,
-        email: newEmail,
-        password: newPassword,
-      });
+
+      if (newRole === "ASSEMBLER") {
+        await teamService.createAssembler({
+          name: newName,
+          email: newEmail,
+          password: newPassword,
+        });
+      } else {
+        await teamService.createAnalyst({
+          name: newName,
+          email: newEmail,
+          password: newPassword,
+        });
+      }
+
       setIsModalOpen(false);
       setNewName("");
       setNewEmail("");
       setNewPassword("");
       await loadData();
     } catch (error) {
-      console.error("Erro ao cadastrar montador:", error);
-      alert("Erro ao cadastrar montador. Verifique os dados.");
+      console.error("Erro ao cadastrar membro da equipe:", error);
+      alert("Erro ao cadastrar. Verifique os dados.");
     } finally {
       setSubmitting(false);
     }
   }
 
   const filtered = useMemo(() => {
-    return montadores.filter((m) => {
+    return membros.filter((m) => {
+      if (roleFilter !== "TODOS" && m.role !== roleFilter) return false;
       if (filter === "ATIVO" && !m.active) return false;
       if (filter === "INATIVO" && m.active) return false;
       if (!query.trim()) return true;
       const q = query.toLowerCase();
       return (
-        m.name.toLowerCase().includes(q) ||
-        m.email.toLowerCase().includes(q) ||
-        (m.team && m.team.toLowerCase().includes(q))
+        m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
       );
     });
-  }, [montadores, query, filter]);
+  }, [membros, query, filter, roleFilter]);
 
-  const ativosCount = montadores.filter((m) => m.active).length;
-  const inativosCount = montadores.filter((m) => !m.active).length;
+  const ativosCount = membros.filter((m) => m.active).length;
+  const inativosCount = membros.filter((m) => !m.active).length;
 
-  const npsMedio = montadores.length
-    ? Math.round(montadores.reduce((a, m) => a + (m.nps || 0), 0) / montadores.length)
+  const npsMedio = membros.length
+    ? Math.round(
+        membros.reduce((a, m: any) => a + (m.nps || 0), 0) / membros.length,
+      )
     : 0;
 
-  const taxaErroMedia = montadores.length
-    ? (montadores.reduce((a, m) => a + (m.errorRate || 0), 0) / montadores.length).toFixed(1)
+  const taxaErroMedia = membros.length
+    ? (
+        membros.reduce((a, m: any) => a + (m.errorRate || 0), 0) /
+        membros.length
+      ).toFixed(1)
     : "0.0";
 
   if (loading) {
@@ -131,7 +148,7 @@ export function MontadoresPage() {
         />
         <Stat
           label="Equipe total"
-          value={montadores.length}
+          value={membros.length}
           hint="Cadastrados no tenant"
           icon={<Users className="h-5 w-5" />}
         />
@@ -156,7 +173,16 @@ export function MontadoresPage() {
           value={query}
           onChange={setQuery}
           placeholder="Buscar montador por nome ou e-mail…"
-          className="min-w-[240px] flex-1 max-w-md"
+          className="min-w-60 flex-1 max-w-md"
+        />
+        <Tabs<FilterRole>
+          value={roleFilter}
+          onChange={setRoleFilter}
+          options={[
+            { value: "TODOS", label: "Todos" },
+            { value: "ASSEMBLER", label: "Montadores" },
+            { value: "ANALYST", label: "Analistas" },
+          ]}
         />
         <Tabs<FilterStatus>
           value={filter}
@@ -177,19 +203,21 @@ export function MontadoresPage() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((m) => (
+          {filtered.map((m: any) => (
             <article
               key={m.id}
-              className="rounded-xl border border-steel-700/60 bg-gradient-to-b from-abyss-800/80 to-abyss-900/80 p-4 transition-colors hover:border-gold-500/40"
+              className="rounded-xl border border-steel-700/60 bg-linear-to-b from-abyss-800/80 to-abyss-900/80 p-4 transition-colors hover:border-gold-500/40"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-gold-400 to-gold-600 text-sm font-bold text-abyss-950">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-linear-to-br from-gold-400 to-gold-600 text-sm font-bold text-abyss-950">
                     {initials(m.name)}
                   </div>
                   <div>
                     <h3 className="font-semibold text-steel-50">{m.name}</h3>
-                    <p className="text-[11px] text-steel-400">{m.team || "Equipe de Campo"}</p>
+                    <p className="text-[11px] text-steel-400">
+                      {m.team || "Equipe de Campo"}
+                    </p>
                   </div>
                 </div>
                 <Badge variant={m.active ? "success" : "muted"}>
@@ -204,7 +232,7 @@ export function MontadoresPage() {
 
               <div className="mt-4 grid grid-cols-3 gap-2">
                 <Mini label="Hoje" value={m.ticketsToday || 0} />
-                <Mini label="Total" value={m.ticketsMonth || 0} />
+                <Mini label="Total" value={m.ticketsTotal || 0} />
                 <Mini
                   label="Erro"
                   value={`${m.errorRate || 0}%`}
@@ -219,7 +247,7 @@ export function MontadoresPage() {
                 </div>
                 <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-abyss-950">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-gold-600 to-gold-400"
+                    className="h-full rounded-full bg-linear-to-r from-gold-600 to-gold-400"
                     style={{ width: `${Math.min(m.nps || 0, 100)}%` }}
                   />
                 </div>
@@ -239,11 +267,15 @@ export function MontadoresPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-steel-700 bg-abyss-900 p-6 shadow-2xl space-y-4">
-            <h3 className="font-bold text-steel-50 text-base">Cadastrar Novo Montador</h3>
+            <h3 className="font-bold text-steel-50 text-base">
+              Cadastrar Novo Montador
+            </h3>
 
-            <form onSubmit={handleCreateAssembler} className="space-y-3">
+            <form onSubmit={handleCreateMember} className="space-y-3">
               <div>
-                <label className="text-xs text-steel-400 block mb-1">Nome Completo</label>
+                <label className="text-xs text-steel-400 block mb-1">
+                  Nome Completo
+                </label>
                 <input
                   type="text"
                   required
@@ -255,7 +287,9 @@ export function MontadoresPage() {
               </div>
 
               <div>
-                <label className="text-xs text-steel-400 block mb-1">E-mail de Acesso</label>
+                <label className="text-xs text-steel-400 block mb-1">
+                  E-mail de Acesso
+                </label>
                 <input
                   type="email"
                   required
@@ -267,7 +301,9 @@ export function MontadoresPage() {
               </div>
 
               <div>
-                <label className="text-xs text-steel-400 block mb-1">Senha de Acesso</label>
+                <label className="text-xs text-steel-400 block mb-1">
+                  Senha de Acesso
+                </label>
                 <input
                   type="password"
                   required
@@ -287,7 +323,11 @@ export function MontadoresPage() {
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar Montador"}
+                  {submitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Salvar Montador"
+                  )}
                 </Button>
               </div>
             </form>
@@ -325,7 +365,7 @@ function Mini({
       <p
         className={cn(
           "mt-0.5 font-mono text-sm font-bold tabular-nums",
-          tone === "danger" ? "text-red-300" : "text-steel-100"
+          tone === "danger" ? "text-red-300" : "text-steel-100",
         )}
       >
         {value}
